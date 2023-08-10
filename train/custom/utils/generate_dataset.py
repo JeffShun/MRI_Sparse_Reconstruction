@@ -209,15 +209,15 @@ if __name__ == '__main__':
         src_data_path = os.path.join(args.src_path, "multicoil_"+task)
         tgt_path = args.tgt_path
         os.makedirs(tgt_path, exist_ok=True)
-        # inputs = []
-        # for f_name in tqdm(os.listdir(src_data_path)):     
-        #     pid = f_name.replace(".h5", "").replace("file","")
-        #     data_path = os.path.join(src_data_path, f_name)
-        #     inputs.append([data_path, tgt_path, pid])
+        inputs = []
+        for f_name in tqdm(os.listdir(src_data_path)):     
+            pid = f_name.replace(".h5", "").replace("file","")
+            data_path = os.path.join(src_data_path, f_name)
+            inputs.append([data_path, tgt_path, pid])
         processed_pids = [pid.replace(".h5", "").replace("file","") for pid in os.listdir(src_data_path)]
-        # pool = Pool(8)
-        # pool.map(process_single, inputs)
-        # pool.close()
-        # pool.join()
+        pool = Pool(8)
+        pool.map(process_single, inputs)
+        pool.close()
+        pool.join()
         # 生成Dataset所需的数据列表
         gen_lst(tgt_path, task, processed_pids)
