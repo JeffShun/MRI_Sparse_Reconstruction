@@ -14,25 +14,26 @@ class network_cfg:
 
     # network
     network = Model_Network(
-        backbone = ResUnet(in_ch=1,channels=32, blocks=2),
+        backbone = ResUnet(in_ch=30,channels=32, blocks=2),
         head = Model_Head(in_channels=32, num_class=1),
         apply_sync_batchnorm=False,
     )
 
     # loss function
-    loss_func = LossCompose[
-        SSIMLoss(win_size = 7, k1 = 0.01, k2 = 0.03)]
+    loss_func = LossCompose([
+        SSIMLoss(win_size = 7, k1 = 0.01, k2 = 0.03)
+        ])
 
     # dataset
     train_dataset = MyDataset(
-        dst_list_file = work_dir + "/train_data/processed_data/train.lst",
+        dst_list_file = work_dir + "/train_data/processed_data/train.txt",
         transforms = TransformCompose([
             to_tensor(),
             normlize()
             ])
         )
     valid_dataset = MyDataset(
-        dst_list_file = work_dir + "/train_data/processed_data/val.lst",
+        dst_list_file = work_dir + "/train_data/processed_data/val.txt",
         transforms = TransformCompose([
             to_tensor(),           
             normlize()
@@ -40,7 +41,7 @@ class network_cfg:
         )
     
     # dataloader
-    batchsize = 3
+    batchsize = 8
     shuffle = True
     num_workers = 8
     drop_last = False

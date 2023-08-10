@@ -29,6 +29,7 @@ class SSIMLoss(nn.Module):
         max_values = max_values[:, :, None, None]
         C1 = (self.k1 * max_values) ** 2
         C2 = (self.k2 * max_values) ** 2
+        self.w = self.w.to(X.device)
         ux = F.conv2d(X, self.w)  # typing: ignore
         uy = F.conv2d(Y, self.w)  #
         uxx = F.conv2d(X * X, self.w)

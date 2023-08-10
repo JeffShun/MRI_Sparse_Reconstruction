@@ -16,14 +16,14 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Test MRI Reconstruction')
 
     parser.add_argument('--device', default="cuda:0", type=str)
-    parser.add_argument('--input_dicom_path', default='../example/data/input_test', type=str)
+    parser.add_argument('--input_path', default='../example/data/input_test', type=str)
     parser.add_argument('--output_path', default='../example/data/output_test', type=str)
 
     parser.add_argument(
         '--model_file',
         type=str,
         # default='../train/checkpoints/trt_model/model.engine'
-        default='../train/checkpoints/v1/200.pth'
+        default='../train/checkpoints/v1/20.pth'
     )
     parser.add_argument(
         '--config_file',
@@ -39,9 +39,12 @@ def inference(predictor: ReconstructionPredictor, img: np.ndarray):
     return pred_array
 
 def save_img(img, save_path):
-    img = (img-img.min())/(img.max()-img.min())*255
-    image = Image.fromarray(img.astype(np.uint8))
-    image.save(save_path)
+    sos_img, pred_img = img
+    sos_img = (sos_img-sos_img.min())/(sos_img.max()-sos_img.min())*255
+    pred_img = (pred_img-pred_img.min())/(pred_img.max()-pred_img.min())*255
+    save_img = np.concatenate((sos_img, pred_img),1)
+    save_img = Image.fromarray(save_img.astype(np.uint8))
+    save_img.save(save_path)
 
 
 def main(input_path, output_path, device, args):
@@ -69,14 +72,12 @@ def main(input_path, output_path, device, args):
         pid = f_name.replace(".h5", "").replace("file","")
         img = np.concatenate((random_sample_img_4.real, random_sample_img_4.imag), axis=0)
         pred_array = inference(predictor_reconstruction, img)
-        save_array = np.concatenate((sos_img, pred_array),1)
-        save_img(save_array, os.path.join(output_path, f'{pid}.png'))
-
+        save_img([sos_img, pred_array], os.path.join(output_path, f'{pid}.png'))
 
 if __name__ == '__main__':
     args = parse_args()
     main(
-        input_dicom_path=args.input_path,
+        input_path=args.input_path,
         output_path=args.output_path,
         device=args.device,
         args=args,

@@ -46,11 +46,11 @@ class to_tensor(object):
 class normlize(object):
     def _normlize(self, data):
         ori_shape = data.shape
-        data_o = data.view(ori_shape[0], -1)
+        data_o = data.reshape(ori_shape[0], -1)
         data_min = data_o.min(dim=-1,keepdim=True)[0]
         data_max = data_o.max(dim=-1,keepdim=True)[0]
         data_o = (data_o - data_min)/(data_max - data_min)
-        data_o = data_o.view(ori_shape)
+        data_o = data_o.reshape(ori_shape)
         return data_o
 
     def __call__(self, img, label):
@@ -169,7 +169,7 @@ class WarmupMultiStepLR(torch.optim.lr_scheduler._LRScheduler):
                 warmup_factor = self.warmup_factor * (1 - alpha) + alpha
         return [base_lr* warmup_factor*self.gamma ** bisect_right(self.milestones, self.last_epoch)  for base_lr in self.base_lrs]
  
- class LossCompose(object):
+class LossCompose(object):
 
     """Composes several loss together.
     Args:

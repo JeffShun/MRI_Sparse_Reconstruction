@@ -7,10 +7,6 @@ from torch import optim
 from torch.autograd import Variable as V
 from torch.utils.data import DataLoader
 import time
-import argparse
-import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel as DDP
-import sys
 from custom.utils.common_tools import *
 from torch.utils.tensorboard import SummaryWriter
 

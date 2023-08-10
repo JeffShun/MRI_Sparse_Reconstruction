@@ -31,12 +31,12 @@ class MyDataset(data.Dataset):
     def _load_source_data(self, file_name):
         data = np.load(file_name, allow_pickle=True)
 
-        acc_img = npz_data['acc_img']
-        sos_img = npz_data['sos_img']
-        random_sample_img_4 = npz_data['random_sample_img_4']
-        random_sample_img_8 = npz_data['random_sample_img_8']
-        eqs_sample_img_4 = npz_data['eqs_sample_img_4']
-        eqs_sample_img_8 = npz_data['eqs_sample_img_8']
+        acc_img = data['acc_img']
+        sos_img = data['sos_img']
+        random_sample_img_4 = data['random_sample_img_4']
+        random_sample_img_8 = data['random_sample_img_8']
+        eqs_sample_img_4 = data['eqs_sample_img_4']
+        eqs_sample_img_8 = data['eqs_sample_img_8']
 
         img = np.concatenate((random_sample_img_4.real, random_sample_img_4.imag), axis=0)
         label = sos_img[np.newaxis,:,:]
@@ -79,7 +79,7 @@ class MyDataset(data.Dataset):
         # plt.imshow(eqs_sample_img_8,cmap="gray")  
         # plt.show()
         ##################### Debug ##########################
-        return img, mask
+        return img, label
 
 
 

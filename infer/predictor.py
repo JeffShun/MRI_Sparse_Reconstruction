@@ -47,13 +47,13 @@ class ReconstructionModel:
 
 class ReconstructionPredictor:
 
-    def __init__(self, device: str, model: DetectKeypointModel):
+    def __init__(self, device: str, model: ReconstructionModel):
         self.device = torch.device(device)
         self.model = model
         self.tensorrt_flag = False 
 
         with open(self.model.config_f, 'r') as config_f:
-            self.test_cfg = DetectKeypointConfig(yaml.safe_load(config_f))
+            self.test_cfg = ReconstructionConfig(yaml.safe_load(config_f))
         self.network_cfg = model.network_cfg
         self.load_model()
 
@@ -127,8 +127,7 @@ class ReconstructionPredictor:
         return reconstruction
 
     def _forward(self, img: np.ndarray):
-        shape = img.shape
-        img = torch.from_numpy(img).float()[None, None]
+        img = torch.from_numpy(img).float()[None]
         img = self._normlize(img)
 
         # tensorrt预测

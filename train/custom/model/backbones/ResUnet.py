@@ -24,28 +24,26 @@ class BasicBlock(nn.Module):
         super(BasicBlock, self).__init__()
 
         # Both self.conv1 and self.downsample layers downsample the input when stride != 1
-        self.conv1 = conv3x3(inplanes, planes, stride)
-        self.bn1 = nn.InstanceNorm2d(planes)
-        self.relu = nn.LeakyReLU(negative_slope=0.2, inplace=True),
-        self.conv2 = conv3x3(planes, planes)
-        self.bn2 = nn.InstanceNorm2d(planes)
+        self.conv_block = nn.Sequential(
+            conv3x3(inplanes, planes, stride),
+            nn.InstanceNorm2d(planes),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            conv3x3(planes, planes),
+            nn.InstanceNorm2d(planes)
+        )
         self.bypass = bypass
+        self.activate = nn.LeakyReLU(negative_slope=0.2, inplace=True)
 
     def forward(self, x):
         identity = x
-
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-
-        out = self.conv2(out)
-        out = self.bn2(out)
+        
+        out = self.conv_block(x)
 
         if self.bypass is not None:
             identity = self.bypass(x)
 
         out += identity
-        out = self.relu(out)
+        out = self.activate(out)
 
         return out
 
@@ -85,7 +83,7 @@ class ResUnet(nn.Module):
     def __init__(self, in_ch, channels=32, blocks=2):
         super(ResUnet, self).__init__()
 
-        self.layer1 = make_res_layer(channels * 1, channels * 2, blocks, stride=1)
+        self.layer1 = make_res_layer(in_ch, channels * 2, blocks, stride=1)
         self.layer2 = make_res_layer(channels * 2, channels * 4, blocks, stride=2)
         self.layer3 = make_res_layer(channels * 4, channels * 8, blocks, stride=2)
         self.layer4 = make_res_layer(channels * 8, channels * 16, blocks, stride=2)
