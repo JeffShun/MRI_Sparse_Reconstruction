@@ -43,7 +43,7 @@ class network_cfg:
     # dataloader
     batchsize = 8
     shuffle = True
-    num_workers = 8
+    num_workers = 4
     drop_last = False
 
     # optimizer

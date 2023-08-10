@@ -23,7 +23,7 @@ def parse_args():
         '--model_file',
         type=str,
         # default='../train/checkpoints/trt_model/model.engine'
-        default='../train/checkpoints/v1/20.pth'
+        default='../train/checkpoints/v1/150.pth'
     )
     parser.add_argument(
         '--config_file',
@@ -39,10 +39,11 @@ def inference(predictor: ReconstructionPredictor, img: np.ndarray):
     return pred_array
 
 def save_img(img, save_path):
-    sos_img, pred_img = img
-    sos_img = (sos_img-sos_img.min())/(sos_img.max()-sos_img.min())*255
+    input_sos, label, pred_img = img
+    input_sos = (input_sos-input_sos.min())/(input_sos.max()-input_sos.min())*255
+    label = (label-label.min())/(label.max()-label.min())*255
     pred_img = (pred_img-pred_img.min())/(pred_img.max()-pred_img.min())*255
-    save_img = np.concatenate((sos_img, pred_img),1)
+    save_img = np.concatenate((input_sos, label, pred_img),1)
     save_img = Image.fromarray(save_img.astype(np.uint8))
     save_img.save(save_path)
 
@@ -69,10 +70,18 @@ def main(input_path, output_path, device, args):
         random_sample_img_8 = test_data['random_sample_img_8']
         eqs_sample_img_4 = test_data['eqs_sample_img_4']
         eqs_sample_img_8 = test_data['eqs_sample_img_8']
-        pid = f_name.replace(".h5", "").replace("file","")
-        img = np.concatenate((random_sample_img_4.real, random_sample_img_4.imag), axis=0)
+
+        input_img = random_sample_img_4
+        input_img_sos = np.sqrt(np.sum(np.abs(input_img)**2, axis=0))
+        pid = f_name.replace(".npz", "")
+        img = np.concatenate((input_img.real, input_img.imag), axis=0)
         pred_array = inference(predictor_reconstruction, img)
-        save_img([sos_img, pred_array], os.path.join(output_path, f'{pid}.png'))
+        save_img([input_img_sos, sos_img, pred_array], os.path.join(output_path, f'{pid}.png'))
+
+        meta_data_dir = os.path.join(output_path, "meta_datas", pid)
+        os.makedirs(meta_data_dir, exist_ok=True)
+        np.save(meta_data_dir + "/pred.npy", pred_array)
+        np.save(meta_data_dir + "/label.npy", sos_img)
 
 if __name__ == '__main__':
     args = parse_args()
