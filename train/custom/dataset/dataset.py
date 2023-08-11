@@ -38,7 +38,7 @@ class MyDataset(data.Dataset):
         eqs_sample_img_4 = data['eqs_sample_img_4']
         eqs_sample_img_8 = data['eqs_sample_img_8']
 
-        img = np.concatenate((random_sample_img_4.real, random_sample_img_4.imag), axis=0)
+        img = random_sample_img_4
         label = sos_img[np.newaxis,:,:]
         # transform前，数据必须转化为[C,H,D]的形状
         if self._transforms:
@@ -79,7 +79,7 @@ class MyDataset(data.Dataset):
         # plt.imshow(eqs_sample_img_8,cmap="gray")  
         # plt.show()
         ##################### Debug ##########################
-        return img, label
+        return img.float(), label.float()
 
 
 

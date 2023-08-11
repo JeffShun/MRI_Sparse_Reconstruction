@@ -30,7 +30,7 @@ def psnr(
 ) -> np.ndarray:
     """Compute Peak Signal to Noise Ratio metric (PSNR)"""
     if maxval is None:
-        maxval = max(gt.max(), pred.max())
+        maxval = gt.max()
     return peak_signal_noise_ratio(gt, pred, data_range=maxval)
 
 
@@ -95,7 +95,8 @@ def evaluate(args):
     for sample in args.data_path.iterdir():
         target = np.load(sample / "label.npy")
         recons = np.load(sample / "pred.npy")
-        metrics.push(target, recons)
+        target_norm = (target - target.min())/(target.max() - target.min())
+        metrics.push(target_norm, recons)
 
     return metrics
 

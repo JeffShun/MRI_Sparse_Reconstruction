@@ -29,14 +29,16 @@ class network_cfg:
         dst_list_file = work_dir + "/train_data/processed_data/train.txt",
         transforms = TransformCompose([
             to_tensor(),
-            normlize()
+            normlize(),
+            complex_to_multichannel()
             ])
         )
     valid_dataset = MyDataset(
         dst_list_file = work_dir + "/train_data/processed_data/val.txt",
         transforms = TransformCompose([
             to_tensor(),           
-            normlize()
+            normlize(),
+            complex_to_multichannel()
             ])
         )
     
@@ -63,7 +65,7 @@ class network_cfg:
     log_dir = work_dir + "/Logs"
     checkpoints_dir = work_dir + '/checkpoints/v1'
     checkpoint_save_interval = 2
-    total_epochs = 150
+    total_epochs = 200
     load_from = work_dir + '/checkpoints/pretrain/40.pth'
 
     # others

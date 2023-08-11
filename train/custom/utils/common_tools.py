@@ -39,12 +39,12 @@ class TransformCompose(object):
 
 class to_tensor(object):
     def __call__(self, img, label):
-        img_o = torch.from_numpy(img.astype("float32"))
-        label_o = torch.from_numpy(label.astype("float32"))
+        img_o = torch.from_numpy(img)
+        label_o = torch.from_numpy(label)
         return img_o, label_o
 
 class normlize(object):
-    def _normlize(self, data):
+    def _normlize_real(self, data):
         ori_shape = data.shape
         data_o = data.reshape(ori_shape[0], -1)
         data_min = data_o.min(dim=-1,keepdim=True)[0]
@@ -53,10 +53,40 @@ class normlize(object):
         data_o = data_o.reshape(ori_shape)
         return data_o
 
+    def _normlize_complex(self, data):
+        ori_shape = data.shape
+        data_o = data.reshape(ori_shape[0], -1)
+        data_modulus = torch.abs(data_o)
+        modulus_max = data_modulus.max(dim=-1,keepdim=True)[0]
+        data_o = data_o / modulus_max
+        data_o = data_o.reshape(ori_shape)
+        return data_o
+    
     def __call__(self, img, label):
-        img_o = self._normlize(img)
-        label_o = self._normlize(label)
+        if torch.is_complex(img):
+            img_o = self._normlize_complex(img)
+        else:
+            img_o = self._normlize_real(img)
+
+        if torch.is_complex(label):
+            label_o = self._normlize_complex(label)
+        else:
+            label_o = self._normlize_real(label)
         return img_o, label_o
+
+class complex_to_multichannel(object):
+    def _complex_to_multichannel(self, data):
+        data_o = torch.concat((data.real, data.imag), 0)
+        return data_o
+
+    def __call__(self, img, label):
+        img_o, label_o = img, label
+        if torch.is_complex(img_o):
+            img_o = self._complex_to_multichannel(img)
+        if torch.is_complex(label_o):
+            label_o = self._complex_to_multichannel(label_o)
+        return img_o, label_o
+
 
 class random_flip(object):
     def __init__(self, axis=1, prob=0.5):
