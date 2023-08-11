@@ -23,7 +23,7 @@ def parse_args():
         '--model_file',
         type=str,
         # default='../train/checkpoints/trt_model/model.engine'
-        default='../train/checkpoints/v1/150.pth'
+        default='../train/checkpoints/v2/4.pth'
     )
     parser.add_argument(
         '--config_file',
@@ -74,8 +74,7 @@ def main(input_path, output_path, device, args):
         input_img = random_sample_img_4
         input_img_sos = np.sqrt(np.sum(np.abs(input_img)**2, axis=0))
         pid = f_name.replace(".npz", "")
-        img = np.concatenate((input_img.real, input_img.imag), axis=0)
-        pred_array = inference(predictor_reconstruction, img)
+        pred_array = inference(predictor_reconstruction, input_img)
         save_img([input_img_sos, sos_img, pred_array], os.path.join(output_path, f'{pid}.png'))
 
         meta_data_dir = os.path.join(output_path, "meta_datas", pid)

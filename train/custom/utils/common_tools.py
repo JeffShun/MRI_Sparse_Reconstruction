@@ -1,11 +1,7 @@
 import random
 import torch
-from torch.nn import functional as F
-import math
-import numpy as np
 import logging
 from bisect import bisect_right
-import torch.nn as nn
 
 
 """
@@ -44,7 +40,24 @@ class to_tensor(object):
         return img_o, label_o
 
 class normlize(object):
-    def _normlize_real(self, data):
+    @ staticmethod
+    def _normlize_real(data):
+        ori_shape = data.shape
+        data_o = data.reshape(-1)
+        data_o = (data_o - data_o.min())/(data_o.max() - data_o.min())
+        data_o = data_o.reshape(ori_shape)
+        return data_o
+
+    @ staticmethod
+    def _normlize_complex(data):
+        data_modulus = torch.abs(data)
+        data_angle = torch.angle(data)
+        modulus_norm = normlize._normlize_real(data_modulus)
+        data_o = torch.polar(modulus_norm, data_angle)
+        return data_o
+    
+    @ staticmethod
+    def _normlize_real2(data):
         ori_shape = data.shape
         data_o = data.reshape(ori_shape[0], -1)
         data_min = data_o.min(dim=-1,keepdim=True)[0]
@@ -53,15 +66,15 @@ class normlize(object):
         data_o = data_o.reshape(ori_shape)
         return data_o
 
-    def _normlize_complex(self, data):
-        ori_shape = data.shape
-        data_o = data.reshape(ori_shape[0], -1)
-        data_modulus = torch.abs(data_o)
-        modulus_max = data_modulus.max(dim=-1,keepdim=True)[0]
-        data_o = data_o / modulus_max
-        data_o = data_o.reshape(ori_shape)
+    @ staticmethod
+    def _normlize_complex2(data):
+        real = data.real
+        imag = data.imag
+        real = normlize._normlize_real2(real)
+        imag = normlize._normlize_real2(imag)
+        data_o = real + 1j * imag
         return data_o
-    
+
     def __call__(self, img, label):
         if torch.is_complex(img):
             img_o = self._normlize_complex(img)
@@ -75,7 +88,8 @@ class normlize(object):
         return img_o, label_o
 
 class complex_to_multichannel(object):
-    def _complex_to_multichannel(self, data):
+    @ staticmethod
+    def _complex_to_multichannel(data):
         data_o = torch.concat((data.real, data.imag), 0)
         return data_o
 

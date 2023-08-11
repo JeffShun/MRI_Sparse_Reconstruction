@@ -110,7 +110,7 @@ def train():
             else:
                 eta = "{:.1f}h".format(eta/60.0)
             if rank == 0:
-                logger.info('Epoch:[{}/{}]\t Iter:[{}/{}]\t Eta:{}\t {}'.format(epoch ,network_cfg.total_epochs, ii+1, len(train_dataloader), eta, loss_info))
+                logger.info('Epoch:[{}/{}]\t Iter:[{}/{}]\t Eta:{}\t {}'.format(epoch+1 ,network_cfg.total_epochs, ii+1, len(train_dataloader), eta, loss_info))
             loss_all.backward()
             optimizer.step()
         if rank == 0:

@@ -1,19 +1,21 @@
 from calendar import c
 from dis import dis
-import os
-import sys
 from os.path import abspath, dirname
 from typing import IO, Dict
 
 import numpy as np
 import torch
 import yaml
-import random
 
 from train.config.reconstruction_config import network_cfg
 import tensorrt as trt
 import pycuda.driver as pdd
 import pycuda.autoinit
+
+import sys, os
+work_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(work_dir)
+from train.custom.utils.common_tools import normlize, complex_to_multichannel
 
 class HostDeviceMem(object):
     def __init__(self, host_mem, device_mem):
@@ -127,9 +129,10 @@ class ReconstructionPredictor:
         return reconstruction
 
     def _forward(self, img: np.ndarray):
-        img = torch.from_numpy(img).float()[None]
-        img = self._normlize(img)
-
+        img = torch.from_numpy(img)
+        img = normlize._normlize_complex(img)
+        img = complex_to_multichannel._complex_to_multichannel(img)
+        img = img[None].float()
         # tensorrt预测
         if self.tensorrt_flag:
             cuda_ctx = pycuda.autoinit.context
@@ -158,8 +161,5 @@ class ReconstructionPredictor:
         reconstruction = reconstruction.squeeze().cpu().detach().numpy()
         return reconstruction
 
-    def _normlize(self, data):
-        data = (data - data.min())/(data.max() - data.min())
-        return data 
 
     
