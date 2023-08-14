@@ -4,7 +4,7 @@ import os
 import sys
 import tarfile
 import traceback
-
+import h5py
 import numpy as np
 from tqdm import tqdm
 from PIL import Image
@@ -23,7 +23,7 @@ def parse_args():
         '--model_file',
         type=str,
         # default='../train/checkpoints/trt_model/model.engine'
-        default='../train/checkpoints/v2/4.pth'
+        default='../train/checkpoints/v1/26.pth'
     )
     parser.add_argument(
         '--config_file',
@@ -62,14 +62,13 @@ def main(input_path, output_path, device, args):
     os.makedirs(output_path, exist_ok=True)
     for f_name in tqdm(os.listdir(input_path)):
         f_path = os.path.join(input_path, f_name)
-        test_data= np.load(f_path, allow_pickle=True)
-
-        acc_img = test_data['acc_img']
-        sos_img = test_data['sos_img']
-        random_sample_img_4 = test_data['random_sample_img_4']
-        random_sample_img_8 = test_data['random_sample_img_8']
-        eqs_sample_img_4 = test_data['eqs_sample_img_4']
-        eqs_sample_img_8 = test_data['eqs_sample_img_8']
+        with h5py.File(f_path, 'r') as f:
+            acc_img = f['acc_img'][:]
+            sos_img = f['sos_img'][:]
+            random_sample_img_4 = f['random_sample_img_4'][:]
+            random_sample_img_8 = f['random_sample_img_8'][:]
+            eqs_sample_img_4 = f['eqs_sample_img_4'][:]
+            eqs_sample_img_8 = f['eqs_sample_img_8'][:]
 
         input_img = random_sample_img_4
         input_img_sos = np.sqrt(np.sum(np.abs(input_img)**2, axis=0))

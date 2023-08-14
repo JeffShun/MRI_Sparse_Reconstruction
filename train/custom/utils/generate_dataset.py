@@ -6,9 +6,9 @@ import os
 from tqdm import tqdm
 from multiprocessing import Pool
 import h5py
-import matplotlib.pylab as plt
 from scipy.linalg import svd
 import numpy as np
+import pathlib
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -138,12 +138,13 @@ def kspace2img(ksapce):
 
 def gen_lst(tgt_path, task, processed_pids):
     save_file = os.path.join(tgt_path, task+'.txt')
-    data_list = glob.glob(os.path.join(tgt_path, '*.npz'))
-    data_list = [file.replace("\\","/") for file in data_list]
+    data_list = glob.glob(str(tgt_path / '*.h5'))
     num = 0
     with open(save_file, 'w') as f:
         for data in data_list:
+            data = str(pathlib.Path(data))
             data = data.replace("\\","/")
+            print(data)
             if data.split("/")[-1].split("_")[0] in processed_pids:
                 num+=1
                 f.writelines(data + '\r')
@@ -188,14 +189,16 @@ def process_single(input):
             eqs_sample_img_4 = center_crop(kspace2img(eqs_sample_kspace_4), target_size)
             eqs_sample_img_8 = center_crop(kspace2img(eqs_sample_kspace_8), target_size)
 
-            np.savez_compressed(os.path.join(tgt_path, f'{pid}_{i}.npz'), 
-                                acc_img=acc_img, 
-                                sos_img=sos_img,
-                                random_sample_img_4=random_sample_img_4,
-                                random_sample_img_8=random_sample_img_8,
-                                eqs_sample_img_4=eqs_sample_img_4,
-                                eqs_sample_img_8=eqs_sample_img_8
-                                )
+            # 将数据存储到 .h5 文件
+            f =  h5py.File(os.path.join(tgt_path, f'{pid}_{i}.h5'),  'w')
+            f.create_dataset('acc_img', data=acc_img)
+            f.create_dataset('sos_img', data=sos_img)
+            f.create_dataset('random_sample_img_4', data=random_sample_img_4)
+            f.create_dataset('random_sample_img_8', data=random_sample_img_8)
+            f.create_dataset('eqs_sample_img_4', data=eqs_sample_img_4)
+            f.create_dataset('eqs_sample_img_8', data=eqs_sample_img_8)
+            f.close()
+
         except Exception as e:
             print(f"Error: {e}")
             continue 
@@ -204,15 +207,15 @@ def process_single(input):
 if __name__ == '__main__':
     args = parse_args()
     src_path = args.src_path
-    for task in ["train", "val"]:
+    for task in ["train", "val", "test"]:
         print("\nBegin gen %s data!"%(task))
-        src_data_path = os.path.join(args.src_path, "multicoil_"+task)
-        tgt_path = args.tgt_path
+        src_data_path = pathlib.Path(args.src_path) / "multicoil_{}".format(task)
+        tgt_path = pathlib.Path(args.tgt_path)
         os.makedirs(tgt_path, exist_ok=True)
         inputs = []
         for f_name in tqdm(os.listdir(src_data_path)):     
             pid = f_name.replace(".h5", "").replace("file","")
-            data_path = os.path.join(src_data_path, f_name)
+            data_path = src_data_path / f_name
             inputs.append([data_path, tgt_path, pid])
         processed_pids = [pid.replace(".h5", "").replace("file","") for pid in os.listdir(src_data_path)]
         pool = Pool(8)
