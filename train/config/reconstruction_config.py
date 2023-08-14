@@ -44,9 +44,9 @@ class network_cfg:
         )
     
     # dataloader
-    batchsize = 12
+    batchsize = 8
     shuffle = True
-    num_workers = 2
+    num_workers = 4
     drop_last = False
 
     # optimizer
@@ -67,7 +67,7 @@ class network_cfg:
     checkpoints_dir = work_dir + '/checkpoints/v1'
     checkpoint_save_interval = 2
     total_epochs = 200
-    load_from = work_dir + '/checkpoints/pretrain/40.pth'
+    load_from = work_dir + '/checkpoints/pretrain/28.pth'
 
     # others
     device = 'cuda'
