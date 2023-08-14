@@ -137,7 +137,7 @@ def kspace2img(ksapce):
 
 
 def gen_lst(tgt_path, task, processed_pids):
-    save_file = os.path.join(tgt_path, task+'.txt')
+    save_file = tgt_path.parent / (task + '.txt')
     data_list = glob.glob(os.path.join(tgt_path, '*.h5'))
     data_list = [file.replace("\\","/") for file in data_list]
     num = 0
@@ -210,7 +210,10 @@ if __name__ == '__main__':
     for task in ["train", "val", "test"]:
         print("\nBegin gen %s data!"%(task))
         src_data_path = pathlib.Path(args.src_path) / "multicoil_{}".format(task)
-        tgt_path = pathlib.Path(args.tgt_path)
+        if not src_data_path.exists():
+            print(str(src_data_path) + " does not exist!")
+            continue
+        tgt_path = pathlib.Path(args.tgt_path) / task
         os.makedirs(tgt_path, exist_ok=True)
         inputs = []
         for f_name in tqdm(os.listdir(src_data_path)):     
