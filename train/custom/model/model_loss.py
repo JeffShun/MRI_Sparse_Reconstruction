@@ -15,7 +15,7 @@ class SSIMLoss(nn.Module):
             k1: k1 parameter for SSIM calculation.
             k2: k2 parameter for SSIM calculation.
         """
-        super().__init__()
+        super(SSIMLoss, self).__init__()
         self.win_size = win_size
         self.k1, self.k2 = k1, k2
         self.register_buffer("w", torch.ones(1, 1, win_size, win_size) / win_size**2)
@@ -49,3 +49,9 @@ class SSIMLoss(nn.Module):
         return 1 - S.mean()
 
 
+class MSELoss(nn.Module):
+    def __init__(self):
+        super(MSELoss, self).__init__()
+
+    def forward(self, X: torch.Tensor, Y: torch.Tensor):
+        return ((X-Y)**2).mean()

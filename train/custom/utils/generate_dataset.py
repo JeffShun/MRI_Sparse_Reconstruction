@@ -138,7 +138,7 @@ def kspace2img(ksapce):
 
 def gen_lst(tgt_path, task, processed_pids):
     save_file = os.path.join(tgt_path, task+'.txt')
-    data_list = glob.glob(os.path.join(tgt_path, '*.npz'))
+    data_list = glob.glob(os.path.join(tgt_path, '*.h5'))
     data_list = [file.replace("\\","/") for file in data_list]
     num = 0
     with open(save_file, 'w') as f:
@@ -188,14 +188,16 @@ def process_single(input):
             eqs_sample_img_4 = center_crop(kspace2img(eqs_sample_kspace_4), target_size)
             eqs_sample_img_8 = center_crop(kspace2img(eqs_sample_kspace_8), target_size)
 
-            np.savez_compressed(os.path.join(tgt_path, f'{pid}_{i}.npz'), 
-                                acc_img=acc_img, 
-                                sos_img=sos_img,
-                                random_sample_img_4=random_sample_img_4,
-                                random_sample_img_8=random_sample_img_8,
-                                eqs_sample_img_4=eqs_sample_img_4,
-                                eqs_sample_img_8=eqs_sample_img_8
-                                )
+            # 将数据存储到 .h5 文件
+            f =  h5py.File(os.path.join(tgt_path, f'{pid}_{i}.h5'),  'w')
+            f.create_dataset('acc_img', data=acc_img)
+            f.create_dataset('sos_img', data=sos_img)
+            f.create_dataset('random_sample_img_4', data=random_sample_img_4)
+            f.create_dataset('random_sample_img_8', data=random_sample_img_8)
+            f.create_dataset('eqs_sample_img_4', data=eqs_sample_img_4)
+            f.create_dataset('eqs_sample_img_8', data=eqs_sample_img_8)
+            f.close()
+
         except Exception as e:
             print(f"Error: {e}")
             continue 

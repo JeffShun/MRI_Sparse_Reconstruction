@@ -22,6 +22,7 @@ class network_cfg:
     # loss function
     loss_func = LossCompose([
         SSIMLoss(win_size = 7, k1 = 0.01, k2 = 0.03)
+        # MSELoss()
         ])
 
     # dataset
@@ -43,9 +44,9 @@ class network_cfg:
         )
     
     # dataloader
-    batchsize = 8
+    batchsize = 12
     shuffle = True
-    num_workers = 4
+    num_workers = 2
     drop_last = False
 
     # optimizer
@@ -62,7 +63,7 @@ class network_cfg:
 
     # debug
     valid_interval = 2
-    log_dir = work_dir + "/Logs"
+    log_dir = work_dir + "/Logs_v1"
     checkpoints_dir = work_dir + '/checkpoints/v1'
     checkpoint_save_interval = 2
     total_epochs = 200

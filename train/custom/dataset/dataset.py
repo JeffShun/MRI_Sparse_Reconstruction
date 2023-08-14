@@ -4,6 +4,8 @@ import random
 import numpy as np
 from torch.utils import data
 from custom.utils.common_tools import *
+import copy
+import h5py
 
 class MyDataset(data.Dataset):
     def __init__(
@@ -29,17 +31,18 @@ class MyDataset(data.Dataset):
         return len(self.data_lst)
 
     def _load_source_data(self, file_name):
-        data = np.load(file_name, allow_pickle=True)
+        # data = np.load(file_name, allow_pickle=True)
 
-        acc_img = data['acc_img']
-        sos_img = data['sos_img']
-        random_sample_img_4 = data['random_sample_img_4']
-        random_sample_img_8 = data['random_sample_img_8']
-        eqs_sample_img_4 = data['eqs_sample_img_4']
-        eqs_sample_img_8 = data['eqs_sample_img_8']
+        with h5py.File(file_name, 'r') as f:
+            # acc_img = f['acc_img'][:]
+            sos_img = f['sos_img'][:]
+            random_sample_img_4 = f['random_sample_img_4'][:]
+            # random_sample_img_8 = f['random_sample_img_8'][:]
+            # eqs_sample_img_4 = f['eqs_sample_img_4'][:]
+            # eqs_sample_img_8 = f['eqs_sample_img_8'][:]
 
-        img = random_sample_img_4
-        label = sos_img[np.newaxis,:,:]
+        img = copy.deepcopy(random_sample_img_4)
+        label = copy.deepcopy(sos_img[np.newaxis,:,:])
         # transform前，数据必须转化为[C,H,D]的形状
         if self._transforms:
             img, label = self._transforms(img, label)

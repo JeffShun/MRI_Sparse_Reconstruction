@@ -18,6 +18,7 @@ for file in os.listdir(logger_dir):
         os.remove(logger_dir+"/"+file)
 logger = Logger(logger_dir+"/train.log", level='debug').logger
 writer = SummaryWriter(logger_dir)
+create_tar_archive("./", logger_dir+"/project.tar")
 
 def train():
     net = network_cfg.network.cuda()
