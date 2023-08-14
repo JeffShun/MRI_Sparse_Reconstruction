@@ -2,7 +2,10 @@ import random
 import torch
 import logging
 from bisect import bisect_right
-
+import os
+import tarfile
+from torch.utils.data import DataLoader
+from prefetch_generator import BackgroundGenerator
 
 """
 数据预处理工具
@@ -92,7 +95,6 @@ class complex_to_multichannel(object):
     def _complex_to_multichannel(data):
         data_o = torch.concat((data.real, data.imag), 0)
         return data_o
-
     def __call__(self, img, label):
         img_o, label_o = img, label
         if torch.is_complex(img_o):
@@ -236,3 +238,23 @@ class LossCompose(object):
             format_string += '    {0}'.format(loss)
         format_string += '\n)'
         return format_string
+
+
+def create_tar_archive(source_folder, output_filename):
+    with tarfile.open(output_filename, "w") as tar:
+        for root, dirs, files in os.walk(source_folder):
+            # 忽略 __pycache__ 文件夹
+            if "__pycache__" in dirs:
+                dirs.remove("__pycache__")
+            if "train_data" in dirs:
+                dirs.remove("train_data")
+            
+            for file in files:
+                if file.endswith(".py"):
+                    file_path = os.path.join(root, file)
+                    tar.add(file_path, arcname=os.path.relpath(file_path, source_folder))
+
+class DataLoaderX(DataLoader):
+
+    def __iter__(self):
+        return BackgroundGenerator(super().__iter__())

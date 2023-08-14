@@ -27,7 +27,7 @@ for file in os.listdir(logger_dir):
             pass
 logger = Logger(logger_dir+"/train.log", level='debug').logger
 writer = SummaryWriter(logger_dir)
-
+create_tar_archive("./", logger_dir+"/project.tar")
 
 def train():  
     init_distributed_mode(network_cfg)
@@ -60,20 +60,22 @@ def train():
 
     train_dataset = network_cfg.train_dataset
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, shuffle=network_cfg.shuffle)
-    train_dataloader = DataLoader(dataset = train_dataset, 
-                                batch_size=network_cfg.batchsize, 
+    train_dataloader = DataLoaderX(dataset = train_dataset, 
+                                batch_size = network_cfg.batchsize,
                                 num_workers=network_cfg.num_workers,
                                 sampler = train_sampler,
-                                drop_last=network_cfg.drop_last
+                                drop_last=network_cfg.drop_last,
+                                pin_memory = True
                                 )               
                     
     valid_dataset = network_cfg.valid_dataset
     valid_sampler = torch.utils.data.distributed.DistributedSampler(valid_dataset, shuffle=False)
-    valid_dataloader = DataLoader(dataset = valid_dataset, 
-                                batch_size=network_cfg.batchsize, 
+    valid_dataloader = DataLoaderX(dataset = valid_dataset, 
+                                batch_size = network_cfg.batchsize,                                
                                 num_workers=network_cfg.num_workers, 
                                 sampler = valid_sampler,
-                                drop_last=False
+                                drop_last=False,
+                                pin_memory = True
                                 )
 
     optimizer = optim.Adam(params=net.parameters(), lr=network_cfg.lr, weight_decay=network_cfg.weight_decay)
@@ -113,6 +115,7 @@ def train():
                 logger.info('Epoch:[{}/{}]\t Iter:[{}/{}]\t Eta:{}\t {}'.format(epoch+1 ,network_cfg.total_epochs, ii+1, len(train_dataloader), eta, loss_info))
             loss_all.backward()
             optimizer.step()
+            time.sleep(0.1)
         if rank == 0:
             writer.add_scalar('LR', optimizer.state_dict()['param_groups'][0]['lr'], epoch)
         scheduler.step()
@@ -127,18 +130,17 @@ def train():
                 with torch.no_grad():
                     v_out = net(valid_data)
                     v_loss = loss_func(v_out, valid_label)
-                loss_all = V(torch.zeros(1)).to(device)
                 for loss_item, loss_val in v_loss.items():
                     if loss_item not in valid_loss:
-                        valid_loss[loss_item] = loss_val
+                        valid_loss[loss_item] = loss_val.item()
                     else:
-                        valid_loss[loss_item] += loss_val  
+                        valid_loss[loss_item] += loss_val.item()  
             loss_info = ""              
             for loss_item, loss_val in valid_loss.items():
                 valid_loss[loss_item] /= (ii+1)
-                loss_info += "{}={:.4f}\t ".format(loss_item,loss_val.item())
+                loss_info += "{}={:.4f}\t ".format(loss_item, loss_val)
                 if rank == 0:
-                    writer.add_scalar('ValidLoss/{}'.format(loss_item),loss_val.item(), (epoch+1)*len(train_dataloader))
+                    writer.add_scalar('ValidLoss/{}'.format(loss_item),loss_val, (epoch+1)*len(train_dataloader))
             if rank == 0:
                 logger.info('Validating Step:\t {}'.format(loss_info))
         

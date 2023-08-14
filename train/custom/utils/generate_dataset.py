@@ -138,13 +138,13 @@ def kspace2img(ksapce):
 
 def gen_lst(tgt_path, task, processed_pids):
     save_file = os.path.join(tgt_path, task+'.txt')
-    data_list = glob.glob(str(tgt_path / '*.h5'))
+    data_list = glob.glob(os.path.join(tgt_path, '*.h5'))
+    data_list = [file.replace("\\","/") for file in data_list]
     num = 0
     with open(save_file, 'w') as f:
         for data in data_list:
             data = str(pathlib.Path(data))
             data = data.replace("\\","/")
-            print(data)
             if data.split("/")[-1].split("_")[0] in processed_pids:
                 num+=1
                 f.writelines(data + '\r')
