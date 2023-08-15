@@ -6,9 +6,15 @@ import os
 from tqdm import tqdm
 from multiprocessing import Pool
 import h5py
-from scipy.linalg import svd
 import numpy as np
 import pathlib
+import torch
+import sys
+work_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(work_dir)
+from custom.utils.fftc import *
+from fftc import *
+import time
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -32,7 +38,8 @@ def RandomMask(n_frequencies=368, center_fraction=0.08, acceleration=4, seed=100
     pad = (n_frequencies - num_low_frequencies + 1) // 2
     center_mask[pad : pad + num_low_frequencies] = 1
     mask = (1 - center_mask) * acceleration_mask + center_mask
-    return mask
+    return mask.astype(np.float32)
+
 
 def EquiSpacedMask(n_frequencies=368, center_fraction=0.08, acceleration=4, offset=0): 
     num_low_frequencies = round(n_frequencies * center_fraction)
@@ -46,98 +53,67 @@ def EquiSpacedMask(n_frequencies=368, center_fraction=0.08, acceleration=4, offs
     pad = (n_frequencies - num_low_frequencies + 1) // 2
     center_mask[pad : pad + num_low_frequencies] = 1
     mask = (1 - center_mask) * acceleration_mask + center_mask     
-    return mask
+    return mask.astype(np.float32)
 
 
 def sos(im, axes=-1):
     '''Root sum of squares combination along given axes.
-
-    Parameters
-    ----------
-    im : array_like
-        Input image.
-    axes : tuple
-        Dimensions to sum across.
-
-    Returns
-    -------
-    array_like
-        SOS combination of image.
     '''
-    return np.sqrt(np.sum(np.abs(im)**2, axis=axes))
+    return torch.sqrt(torch.sum(torch.abs(im)**2, axis=axes))
 
 
-def AdaptiveCoilCombine(data_in):
-    """
-    Adaptive Combination using Temporal Phase information (ACTP) coil combine.
+def AdaptiveCoilCombine(data_tensor):
+    k = 8
+    chunks = data_tensor.chunk(k, dim=0)  # 在第 0 维度进行等分
+    out_chunks = []
+    for i, chunk in enumerate(chunks):
+        chunk = chunk.cuda()
+        n_slice, nx, ny, nc = chunk.shape
+        # Step-01
+        data_flatten1 = chunk.reshape(-1, nc, 1)
+        data_flatten2 = chunk.reshape(-1, 1, nc)
+        mat_corr = torch.bmm(data_flatten1, data_flatten2)
 
-    Inputs:
-        - data_in: a 3D array containing multi-channel complex images ([nx, ny, nc])
-
-    Outputs:
-        - data_out: composited complex images ([nx, ny])
-
-    Author: Beck Zhu, 2022-12-26, initial version
-    """
-
-    nx, ny, nc = data_in.shape
-    data_out = np.zeros((nx, ny), dtype=np.complex128)
-
-    mat_corr = np.zeros((nx, ny, nc, nc), dtype=np.complex128)
-
-    # Step-01
-    for idx_ch1 in range(nc):
-        for idx_ch2 in range(nc):
-            mat_corr[:, :, idx_ch1, idx_ch2] = mat_corr[:, :, idx_ch1, idx_ch2] + data_in[:, :, idx_ch1] * np.conj(data_in[:, :, idx_ch2])
-
-    # Step-02
-    for idx in range(nx):
-        for idy in range(ny):
-            U, S, _ = svd(mat_corr[idx, idy, :, :])
-            vfilter = U[:, 0]
-
-            data_out[idx, idy] = np.dot(vfilter.conj(), data_in[idx, idy, :])
-
-    return data_out
+        # Step-02
+        U, S, _ = torch.svd(mat_corr)
+        vfilter = U[:, :, 0].unsqueeze(1)
+        data_out = torch.bmm(vfilter.conj(), data_flatten1)
+        data_out = data_out.reshape(n_slice, nx, ny)
+        out_chunks.append(data_out)
+    torch.cuda.empty_cache()    
+    return torch.cat(out_chunks,0).cpu()
 
 
 def center_crop(image, crop_size):
     """
-    对输入的二维图像进行中心裁剪。
+    对图像进行中心裁剪。
     """
 
     # 获取输入图像的尺寸
-    n_coils, image_height, image_width = image.shape
+    n_slices, n_coils, image_height, image_width = image.shape
 
     # 获取裁剪尺寸
-    _, crop_height, crop_width = crop_size
+    crop_height, crop_width = crop_size
 
     # 计算裁剪起始位置
     start_row = (image_height - crop_height) // 2
     start_col = (image_width - crop_width) // 2
 
     # 进行裁剪
-    cropped_image = image[:, start_row:start_row+crop_height, start_col:start_col+crop_width]
+    cropped_image = image[:, :, start_row:start_row+crop_height, start_col:start_col+crop_width]
 
     return cropped_image
 
-def get_mask_img(mask,shape):
-    mask_arr = np.zeros(shape,dtype=np.uint8)
-    for i,flag in enumerate(mask):
-        if flag:
-            mask_arr[:,i] = 1
-    return mask_arr
-
 
 def kspace2img(ksapce):
-    kspace_shift = np.fft.ifftshift(ksapce, axes=(-2,-1))
-    img = np.fft.ifft2(kspace_shift)
-    img = np.fft.fftshift(img)
-    return img     
+    n_slice, nc, nx, ny = ksapce.shape
+    ksapce = torch.view_as_real(ksapce)
+    img = fft2c_new(ksapce).reshape(n_slice, nc, nx, ny, 2)
+    return torch.view_as_complex(img)    
 
 
 def gen_lst(tgt_path, task, processed_pids):
-    save_file = os.path.join(tgt_path, task+'.txt')
+    save_file = tgt_path.parent / (task + '.txt')
     data_list = glob.glob(os.path.join(tgt_path, '*.h5'))
     data_list = [file.replace("\\","/") for file in data_list]
     num = 0
@@ -155,72 +131,75 @@ def process_single(input):
     data_path, tgt_path, pid = input
     kspace, reconstruction_rss = load_h5(data_path)
     n_slices, n_coils, n_rows, n_frequencies = kspace.shape
-    target_size = (15, 320, 320)
+    target_size = (320, 320)
+    kspace = torch.from_numpy(kspace)
+
+    ####################################### 计算满采图像 ######################################
+    # 对每个kspace切片转到图像域
+    img = kspace2img(kspace)
+    crop_img = center_crop(img, target_size)
+    assert(tuple(crop_img.shape[-2:])==target_size)
+    crop_img = crop_img.permute(0, 2, 3, 1)
+    # acc算法通道合并后的图像
+    acc_img = AdaptiveCoilCombine(crop_img).numpy()
+    # sos算法通道合并后的图像
+    sos_img = sos(crop_img).numpy()
+
+    ####################################### 计算欠采图像 ######################################
+    # 欠采k空间数据
+    random_sample_mask_4 = RandomMask(n_frequencies=n_frequencies, center_fraction=0.08, acceleration=4, seed=1000)
+    random_sample_mask_8 = RandomMask(n_frequencies=n_frequencies, center_fraction=0.04, acceleration=8, seed=1000)
+    eqs_sample_mask_4 = EquiSpacedMask(n_frequencies, center_fraction=0.08, acceleration=4, offset=0)
+    eqs_sample_mask_8 = EquiSpacedMask(n_frequencies, center_fraction=0.04, acceleration=8, offset=0)
+
+    random_sample_kspace_4 = torch.from_numpy(random_sample_mask_4)[None,None,None] * kspace
+    random_sample_kspace_8 = torch.from_numpy(random_sample_mask_8)[None,None,None] * kspace
+    eqs_sample_kspace_4 = torch.from_numpy(eqs_sample_mask_4)[None,None,None] * kspace
+    eqs_sample_kspace_8 = torch.from_numpy(eqs_sample_mask_8)[None,None,None] * kspace
+
+    # 欠采图像数据
+    random_sample_img_4 = center_crop(kspace2img(random_sample_kspace_4), target_size).numpy()
+    random_sample_img_8 = center_crop(kspace2img(random_sample_kspace_8), target_size).numpy()
+    eqs_sample_img_4 = center_crop(kspace2img(eqs_sample_kspace_4), target_size).numpy()
+    eqs_sample_img_8 = center_crop(kspace2img(eqs_sample_kspace_8), target_size).numpy()
+
     for i in range(n_slices):
-        try:
-            ####################################### 计算满采图像 ######################################
-            # 对每个kspace切片转到图像域
-            slice_kspace = kspace[i]    # size: [n_coils, n_rows, n_frequencies]
-            slice_img = kspace2img(slice_kspace)
-            slice_img = center_crop(slice_img, target_size)
-            assert(slice_img.shape==target_size)
-            # 多通道图像合并
-            slice_img = np.transpose(slice_img, axes=(1, 2, 0))
-            # acc算法通道合并后的图像
-            acc_img = AdaptiveCoilCombine(slice_img)
-            # sos算法通道合并后的图像
-            sos_img = sos(slice_img)
-            
-            ####################################### 计算欠采图像 ######################################
-            # 欠采k空间数据
-            random_sample_mask_4 = RandomMask(n_frequencies=n_frequencies, center_fraction=0.08, acceleration=4, seed=1000)
-            random_sample_mask_8 = RandomMask(n_frequencies=n_frequencies, center_fraction=0.04, acceleration=8, seed=1000)
-            eqs_sample_mask_4 = EquiSpacedMask(n_frequencies, center_fraction=0.08, acceleration=4, offset=0)
-            eqs_sample_mask_8 = EquiSpacedMask(n_frequencies, center_fraction=0.04, acceleration=8, offset=0)
-
-            random_sample_kspace_4 = get_mask_img(random_sample_mask_4, (n_rows, n_frequencies))[np.newaxis,:,:] * slice_kspace
-            random_sample_kspace_8 = get_mask_img(random_sample_mask_8, (n_rows, n_frequencies))[np.newaxis,:,:] * slice_kspace
-            eqs_sample_kspace_4 = get_mask_img(eqs_sample_mask_4, (n_rows, n_frequencies))[np.newaxis,:,:] * slice_kspace
-            eqs_sample_kspace_8 = get_mask_img(eqs_sample_mask_8, (n_rows, n_frequencies))[np.newaxis,:,:] * slice_kspace
-
-            # 欠采图像数据
-            random_sample_img_4 = center_crop(kspace2img(random_sample_kspace_4), target_size)
-            random_sample_img_8 = center_crop(kspace2img(random_sample_kspace_8), target_size)
-            eqs_sample_img_4 = center_crop(kspace2img(eqs_sample_kspace_4), target_size)
-            eqs_sample_img_8 = center_crop(kspace2img(eqs_sample_kspace_8), target_size)
-
-            # 将数据存储到 .h5 文件
-            f =  h5py.File(os.path.join(tgt_path, f'{pid}_{i}.h5'),  'w')
-            f.create_dataset('acc_img', data=acc_img)
-            f.create_dataset('sos_img', data=sos_img)
-            f.create_dataset('random_sample_img_4', data=random_sample_img_4)
-            f.create_dataset('random_sample_img_8', data=random_sample_img_8)
-            f.create_dataset('eqs_sample_img_4', data=eqs_sample_img_4)
-            f.create_dataset('eqs_sample_img_8', data=eqs_sample_img_8)
-            f.close()
-
-        except Exception as e:
-            print(f"Error: {e}")
-            continue 
+        # 将数据存储到 .h5 文件
+        f =  h5py.File(os.path.join(tgt_path, f'{pid}_{i}.h5'),  'w')
+        f.create_dataset('acc_img', data=acc_img[i])
+        f.create_dataset('sos_img', data=sos_img[i])
+        f.create_dataset('random_sample_img_4', data=random_sample_img_4[i])
+        f.create_dataset('random_sample_img_8', data=random_sample_img_8[i])
+        f.create_dataset('eqs_sample_img_4', data=eqs_sample_img_4[i])
+        f.create_dataset('eqs_sample_img_8', data=eqs_sample_img_8[i])
+        f.close()
 
 
 if __name__ == '__main__':
+    time_start = time.time()
     args = parse_args()
     src_path = args.src_path
     for task in ["train", "val", "test"]:
         print("\nBegin gen %s data!"%(task))
         src_data_path = pathlib.Path(args.src_path) / "multicoil_{}".format(task)
-        tgt_path = pathlib.Path(args.tgt_path)
+        if not src_data_path.exists():
+            print(str(src_data_path) + " does not exist!")
+            continue
+        tgt_path = pathlib.Path(args.tgt_path) / task
         os.makedirs(tgt_path, exist_ok=True)
         inputs = []
         for f_name in tqdm(os.listdir(src_data_path)):     
             pid = f_name.replace(".h5", "").replace("file","")
             data_path = src_data_path / f_name
             inputs.append([data_path, tgt_path, pid])
+            process_single([data_path,tgt_path,pid])
         processed_pids = [pid.replace(".h5", "").replace("file","") for pid in os.listdir(src_data_path)]
-        pool = Pool(8)
+        pool = Pool(4)
         pool.map(process_single, inputs)
         pool.close()
         pool.join()
         # 生成Dataset所需的数据列表
         gen_lst(tgt_path, task, processed_pids)
+    time_cost = time.time() - time_start
+    print("time_cost: ", time_cost)
+

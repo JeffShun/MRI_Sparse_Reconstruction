@@ -23,7 +23,7 @@ def parse_args():
         '--model_file',
         type=str,
         # default='../train/checkpoints/trt_model/model.engine'
-        default='../train/checkpoints/v1/26.pth'
+        default='../train/checkpoints/v2/70.pth'
     )
     parser.add_argument(
         '--config_file',

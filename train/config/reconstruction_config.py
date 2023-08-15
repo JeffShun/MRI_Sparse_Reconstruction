@@ -1,7 +1,7 @@
 import sys, os
 work_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(work_dir)
-from custom.model.backbones.ResUnet import *
+from custom.model.backbones.MWCNN import *
 from custom.model.model_head import *
 from custom.model.model_network import *
 from custom.model.model_loss import *
@@ -14,7 +14,7 @@ class network_cfg:
 
     # network
     network = Model_Network(
-        backbone = ResUnet(in_ch=30,channels=32, blocks=2),
+        backbone = MWCNN(in_ch=30,channels=32),
         head = Model_Head(in_channels=32, num_class=1),
         apply_sync_batchnorm=False,
     )
@@ -62,9 +62,10 @@ class network_cfg:
     last_epoch = -1
 
     # debug
+    version = "v2"
     valid_interval = 2
-    log_dir = work_dir + "/Logs_v1"
-    checkpoints_dir = work_dir + '/checkpoints/v1'
+    log_dir = work_dir + "/Logs/" + version
+    checkpoints_dir = work_dir + '/checkpoints/' + version
     checkpoint_save_interval = 2
     total_epochs = 200
     load_from = work_dir + '/checkpoints/pretrain/28.pth'
