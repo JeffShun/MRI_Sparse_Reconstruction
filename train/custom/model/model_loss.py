@@ -1,4 +1,3 @@
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -55,3 +54,13 @@ class MSELoss(nn.Module):
 
     def forward(self, X: torch.Tensor, Y: torch.Tensor):
         return ((X-Y)**2).mean()
+    
+
+
+class SmoothL1Loss(nn.Module):
+    def __init__(self):
+        super(SmoothL1Loss, self).__init__()
+        self.smoothL1loss = nn.SmoothL1Loss(reduction="mean")
+
+    def forward(self, X, Y):
+        return self.smoothL1loss(X, Y)

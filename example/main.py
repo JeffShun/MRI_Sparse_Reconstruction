@@ -1,9 +1,6 @@
 import argparse
-import glob
 import os
 import sys
-import tarfile
-import traceback
 import h5py
 import numpy as np
 from tqdm import tqdm
@@ -17,13 +14,13 @@ def parse_args():
 
     parser.add_argument('--device', default="cuda:0", type=str)
     parser.add_argument('--input_path', default='../example/data/input_test', type=str)
-    parser.add_argument('--output_path', default='../example/data/output_test', type=str)
+    parser.add_argument('--output_path', default='../example/data/output_test_MWCNN', type=str)
 
     parser.add_argument(
         '--model_file',
         type=str,
         # default='../train/checkpoints/trt_model/model.engine'
-        default='../train/checkpoints/v2/70.pth'
+        default='../train/checkpoints/v2_MWCNN/200.pth'
     )
     parser.add_argument(
         '--config_file',

@@ -84,6 +84,28 @@ def AdaptiveCoilCombine(data_tensor):
     return torch.cat(out_chunks,0).cpu()
 
 
+def AdaptiveCoilCombine_Local(data_tensor):
+    k = 8
+    chunks = data_tensor.chunk(k, dim=0)  # 在第 0 维度进行等分
+    out_chunks = []
+    for i, chunk in enumerate(chunks):
+        chunk = chunk.cuda()
+        n_slice, nx, ny, nc = chunk.shape
+        # Step-01
+        data_flatten1 = chunk.reshape(-1, nc, 1)
+        data_flatten2 = chunk.reshape(-1, 1, nc)
+        mat_corr = torch.bmm(data_flatten1, data_flatten2)
+
+        # Step-02
+        U, S, _ = torch.svd(mat_corr)
+        vfilter = U[:, :, 0].unsqueeze(1)
+        data_out = torch.bmm(vfilter.conj(), data_flatten1)
+        data_out = data_out.reshape(n_slice, nx, ny)
+        out_chunks.append(data_out)
+    torch.cuda.empty_cache()    
+    return torch.cat(out_chunks,0).cpu()
+
+
 def center_crop(image, crop_size):
     """
     对图像进行中心裁剪。
