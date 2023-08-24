@@ -1,7 +1,7 @@
 import sys, os
 work_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(work_dir)
-from custom.model.backbones.MWCNN import *
+from custom.model.backbones.DC_MWCNN import *
 from custom.model.backbones.Unet import *
 from custom.model.model_head import *
 from custom.model.model_network import *
@@ -15,8 +15,8 @@ class network_cfg:
 
     # network
     network = Model_Network(
-        backbone = MWCNN(in_ch=30,channels=64),
-        head = Model_Head(in_channels=64, num_class=1),
+        backbone = DC_MWCNN(in_ch=30,channels=32,stages=3),
+        head = Model_Head(in_channels=30, num_class=1),
         apply_sync_batchnorm=False,
     )
 
@@ -29,19 +29,17 @@ class network_cfg:
 
     # dataset
     train_dataset = MyDataset(
-        dst_list_file = work_dir + "/train_data/processed_data/train.txt",
+        sample_list_file = work_dir + "/train_data/processed_data/train.txt",
+        mask_file = work_dir + "/train_data/processed_data/sampling_masks/mask.h5",
         transforms = TransformCompose([
-            to_tensor(),
-            normlize(),
-            complex_to_multichannel()
+            to_tensor()
             ])
         )
     valid_dataset = MyDataset(
-        dst_list_file = work_dir + "/train_data/processed_data/val.txt",
+        sample_list_file = work_dir + "/train_data/processed_data/val.txt",
+        mask_file = work_dir + "/train_data/processed_data/sampling_masks/mask.h5",
         transforms = TransformCompose([
-            to_tensor(),           
-            normlize(),
-            complex_to_multichannel()
+            to_tensor()
             ])
         )
     
@@ -52,7 +50,7 @@ class network_cfg:
     drop_last = False
 
     # optimizer
-    lr = 1e-3
+    lr = 1e-2
     weight_decay = 5e-4
 
     # scheduler
@@ -64,7 +62,7 @@ class network_cfg:
     last_epoch = -1
 
     # debug
-    version = "v2_Unet"
+    version = "v2_Unet_Wavelet_DC"
     valid_interval = 2
     log_dir = work_dir + "/Logs/" + version
     checkpoints_dir = work_dir + '/checkpoints/' + version

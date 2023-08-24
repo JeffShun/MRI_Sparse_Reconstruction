@@ -75,15 +75,14 @@ class ReconstructionPredictor:
         from torch import jit
         self.net = jit.load(self.model.model_f, map_location=self.device)
         self.net.eval()
-        self.net.to(self.device).half()
-
+        self.net.to(self.device)
     def load_model_pth(self) -> None:
         # 加载动态图
         self.net = self.network_cfg.network
         checkpoint = torch.load(self.model.model_f, map_location=self.device)
         self.net.load_state_dict(checkpoint)
         self.net.eval()
-        self.net.to(self.device).half()
+        self.net.to(self.device)
 
     def load_model_engine(self) -> None:
         TRT_LOGGER = trt.Logger()
@@ -124,15 +123,17 @@ class ReconstructionPredictor:
         # Return only the host outputs.
         return [out.host for out in outputs]
 
-    def predict(self, img: np.ndarray):
-        reconstruction  = self._forward(img)
+    def predict(self, inputs):
+        img, sample_mask = inputs
+        reconstruction = self._forward([img, sample_mask])
         return reconstruction
 
-    def _forward(self, img: np.ndarray):
+    def _forward(self, inputs):
+        img, sample_mask = inputs
         img = torch.from_numpy(img)
-        img = normlize._normlize_complex(img)
-        img = complex_to_multichannel._complex_to_multichannel(img)
-        img = img[None].float()
+        img = img[None]
+        sample_mask = torch.from_numpy(sample_mask)
+        sample_mask = sample_mask[None]
         # tensorrt预测
         if self.tensorrt_flag:
             cuda_ctx = pycuda.autoinit.context
@@ -155,11 +156,13 @@ class ReconstructionPredictor:
         else:
             # pytorch预测
             with torch.no_grad():
-                patch_gpu = img.half().to(self.device)
-                reconstruction = self.net(patch_gpu)
+                img_gpu = img.to(self.device)
+                sample_mask_gpu = sample_mask.to(self.device)
+                reconstruction = self.net([img_gpu, sample_mask_gpu])
+                output = reconstruction[-2]
 
-        reconstruction = reconstruction.squeeze().cpu().detach().numpy()
-        return reconstruction
+        output = output.squeeze().cpu().detach().numpy()
+        return output
 
 
     

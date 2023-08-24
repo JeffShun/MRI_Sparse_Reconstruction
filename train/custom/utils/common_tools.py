@@ -37,6 +37,10 @@ class TransformCompose(object):
 
 
 class to_tensor(object):
+    @ staticmethod
+    def _to_tensor(data):
+        return torch.from_numpy(data)
+    
     def __call__(self, img, label):
         img_o = torch.from_numpy(img)
         label_o = torch.from_numpy(label)

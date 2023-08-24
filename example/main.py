@@ -14,13 +14,13 @@ def parse_args():
 
     parser.add_argument('--device', default="cuda:0", type=str)
     parser.add_argument('--input_path', default='../example/data/input_test', type=str)
-    parser.add_argument('--output_path', default='../example/data/output_test_MWCNN', type=str)
+    parser.add_argument('--output_path', default='../example/data/output_test_DC_MWCNN', type=str)
 
     parser.add_argument(
         '--model_file',
         type=str,
         # default='../train/checkpoints/trt_model/model.engine'
-        default='../train/checkpoints/v2_MWCNN/200.pth'
+        default='../train/checkpoints/v2_Unet_Wavelet_DC/12.pth'
     )
     parser.add_argument(
         '--config_file',
@@ -60,17 +60,17 @@ def main(input_path, output_path, device, args):
     for f_name in tqdm(os.listdir(input_path)):
         f_path = os.path.join(input_path, f_name)
         with h5py.File(f_path, 'r') as f:
-            acc_img = f['acc_img'][:]
-            sos_img = f['sos_img'][:]
+            full_sampling_img = f['full_sampling_img'][:]
             random_sample_img_4 = f['random_sample_img_4'][:]
-            random_sample_img_8 = f['random_sample_img_8'][:]
-            eqs_sample_img_4 = f['eqs_sample_img_4'][:]
-            eqs_sample_img_8 = f['eqs_sample_img_8'][:]
+        mask_path = os.path.join(input_path, "mask.h5")
+        with h5py.File(mask_path, 'r') as f:
+            random_sample_mask_4 = f['random_sample_mask_4'][:]
 
         input_img = random_sample_img_4
         input_img_sos = np.sqrt(np.sum(np.abs(input_img)**2, axis=0))
+        sos_img = np.sqrt(np.sum(np.abs(full_sampling_img)**2, axis=0))
         pid = f_name.replace(".npz", "")
-        pred_array = inference(predictor_reconstruction, input_img)
+        pred_array = inference(predictor_reconstruction, [input_img,random_sample_mask_4])
         save_img([input_img_sos, sos_img, pred_array], os.path.join(output_path, f'{pid}.png'))
 
         meta_data_dir = os.path.join(output_path, "meta_datas", pid)

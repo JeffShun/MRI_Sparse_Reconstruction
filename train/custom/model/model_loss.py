@@ -21,7 +21,13 @@ class SSIMLoss(nn.Module):
         NP = win_size**2
         self.cov_norm = NP / (NP - 1)
 
-    def forward(self, X: torch.Tensor, Y: torch.Tensor):
+    def forward(self, Xs, Ys):
+        loss = self.forward_single(Xs[0], Ys)
+        for i in range(1, len(Xs)):
+            loss+= self.forward_single(Xs[i], Ys)
+        return loss
+
+    def forward_single(self, X: torch.Tensor, Y: torch.Tensor):
         assert isinstance(self.w, torch.Tensor)
         B, C, W, D = Y.shape
         max_values, _ = torch.max(Y.view(B, C, -1), -1)
@@ -62,5 +68,11 @@ class SmoothL1Loss(nn.Module):
         super(SmoothL1Loss, self).__init__()
         self.smoothL1loss = nn.SmoothL1Loss(reduction="mean")
 
-    def forward(self, X, Y):
+    def forward(self, Xs, Ys):
+        loss = self.forward_single(Xs[0], Ys)
+        for i in range(1, len(Xs)):
+            loss+= self.forward_single(Xs[i], Ys)
+        return loss        
+
+    def forward_single(self, X, Y):
         return self.smoothL1loss(X, Y)

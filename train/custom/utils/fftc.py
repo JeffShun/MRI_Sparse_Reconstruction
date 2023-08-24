@@ -6,7 +6,6 @@ LICENSE file in the root directory of this source tree.
 """
 
 from typing import List, Optional
-
 import torch
 import torch.fft
 
@@ -24,16 +23,9 @@ def fft2c_new(data: torch.Tensor, norm: str = "ortho") -> torch.Tensor:
     Returns:
         The FFT of the input.
     """
-    if not data.shape[-1] == 2:
-        raise ValueError("Tensor does not have separate complex dim.")
-
-    data = ifftshift(data, dim=[-3, -2])
-    data = torch.view_as_real(
-        torch.fft.fftn(  # type: ignore
-            torch.view_as_complex(data), dim=(-2, -1), norm=norm
-        )
-    )
-    data = fftshift(data, dim=[-3, -2])
+    data = torch.fft.ifftshift(data, dim=[-2, -1])
+    data = torch.fft.fftn(data, dim=(-2, -1), norm=norm)
+    data = torch.fft.fftshift(data, dim=[-2, -1])
 
     return data
 
@@ -51,16 +43,12 @@ def ifft2c_new(data: torch.Tensor, norm: str = "ortho") -> torch.Tensor:
     Returns:
         The IFFT of the input.
     """
-    if not data.shape[-1] == 2:
-        raise ValueError("Tensor does not have separate complex dim.")
+    # if not data.shape[-1] == 2:
+    #     raise ValueError("Tensor does not have separate complex dim.")
 
-    data = ifftshift(data, dim=[-3, -2])
-    data = torch.view_as_real(
-        torch.fft.ifftn(  # type: ignore
-            torch.view_as_complex(data), dim=(-2, -1), norm=norm
-        )
-    )
-    data = fftshift(data, dim=[-3, -2])
+    data = torch.fft.ifftshift(data, dim=[-2, -1])
+    data = torch.fft.ifftn(data, dim=(-2, -1), norm=norm)
+    data = torch.fft.fftshift(data, dim=[-2, -1])
 
     return data
 
@@ -163,3 +151,12 @@ def ifftshift(x: torch.Tensor, dim: Optional[List[int]] = None) -> torch.Tensor:
         shift[i] = (x.shape[dim_num] + 1) // 2
 
     return roll(x, shift, dim)
+
+
+if __name__ == "__main__":
+    real = torch.rand(1,4,10,10)*10
+    imag = torch.rand(1,4,10,10)*10
+    data = real+1j*imag
+    kdata = fft2c_new(data)
+    idata = ifft2c_new(kdata)
+    print(data-idata)
