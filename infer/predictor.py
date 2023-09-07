@@ -75,7 +75,7 @@ class ReconstructionPredictor:
         from torch import jit
         self.net = jit.load(self.model.model_f, map_location=self.device)
         self.net.eval()
-        self.net.to(self.device).half()
+        self.net.to(self.device)
 
     def load_model_pth(self) -> None:
         # 加载动态图
@@ -83,7 +83,7 @@ class ReconstructionPredictor:
         checkpoint = torch.load(self.model.model_f, map_location=self.device)
         self.net.load_state_dict(checkpoint)
         self.net.eval()
-        self.net.to(self.device).half()
+        self.net.to(self.device)
 
     def load_model_engine(self) -> None:
         TRT_LOGGER = trt.Logger()
@@ -124,42 +124,17 @@ class ReconstructionPredictor:
         # Return only the host outputs.
         return [out.host for out in outputs]
 
-    def predict(self, img: np.ndarray):
-        reconstruction  = self._forward(img)
+    def predict(self, inputs):
+        reconstruction  = self._forward(inputs)
         return reconstruction
 
-    def _forward(self, img: np.ndarray):
-        img = torch.from_numpy(img)
-        img = normlize._normlize_complex(img)
-        img = complex_to_multichannel._complex_to_multichannel(img)
-        img = img[None].float()
-        # tensorrt预测
-        if self.tensorrt_flag:
-            cuda_ctx = pycuda.autoinit.context
-            cuda_ctx.push()
-            # 动态输入
-            img = np.ascontiguousarray(img.numpy())
-            self.context.active_optimization_profile = 0
-            origin_inputshape = self.context.get_binding_shape(0)
-            origin_inputshape[0], origin_inputshape[1], origin_inputshape[2], origin_inputshape[3], origin_inputshape[4] = img.shape
-            # 若每个输入的size不一样，可根据inputs的size更改对应的context中的size
-            self.context.set_binding_shape(0, (origin_inputshape))  
-            inputs, outputs, bindings, stream = self.allocate_buffers(self.engine, self.context)
-            inputs[0].host = img
-            trt_outputs = self.trt_inference(self.context, bindings=bindings, inputs=inputs, outputs=outputs,stream=stream, batch_size=1)
-            if cuda_ctx:
-                cuda_ctx.pop()
-            shape_of_output = [1, 1, 320, 320]
-            reconstruction = trt_outputs[0].reshape(shape_of_output)
-            reconstruction = torch.from_numpy(reconstruction)
-        else:
-            # pytorch预测
-            with torch.no_grad():
-                patch_gpu = img.half().to(self.device)
-                reconstruction = self.net(patch_gpu)
-
-        reconstruction = reconstruction.squeeze().cpu().detach().numpy()
-        return reconstruction
+    def _forward(self, inputs):
+        inputs_th = [torch.from_numpy(input).unsqueeze(0).to(self.device) for input in inputs]
+        # pytorch预测
+        with torch.no_grad():
+            reconstruction = self.net(inputs_th)
+            reconstruction = reconstruction.squeeze().cpu().detach().numpy()
+        return np.abs(reconstruction)
 
 
     

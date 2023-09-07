@@ -4,17 +4,17 @@ import argparse
 import glob
 import os
 from tqdm import tqdm
-from multiprocessing import Pool
 import h5py
 import numpy as np
 import pathlib
 import torch
 import sys
+import copy
 work_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(work_dir)
-from custom.utils.fftc import *
-from fftc import *
+from custom.utils.mri_tools import *
 import time
+from custom.utils.common_tools import *
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -25,8 +25,8 @@ def parse_args():
 
 def load_h5(h5_path):
     with h5py.File(h5_path, "r") as hf:
-        kspace = np.array(hf["kspace"])
-        reconstruction_rss = np.array(hf["reconstruction_rss"])
+        kspace = hf["kspace"][:]
+        reconstruction_rss = hf["reconstruction_rss"][:]
     return kspace, reconstruction_rss
 
 def RandomMask(n_frequencies=368, center_fraction=0.08, acceleration=4, seed=1000):
@@ -52,35 +52,13 @@ def EquiSpacedMask(n_frequencies=368, center_fraction=0.08, acceleration=4, offs
     center_mask = np.zeros(n_frequencies, dtype=np.int32)
     pad = (n_frequencies - num_low_frequencies + 1) // 2
     center_mask[pad : pad + num_low_frequencies] = 1
-    mask = (1 - center_mask) * acceleration_mask + center_mask     
+    mask = (1 - center_mask) * acceleration_mask + center_mask  
     return mask.astype(np.float32)
-
 
 def sos(im, axes=-1):
     '''Root sum of squares combination along given axes.
     '''
     return torch.sqrt(torch.sum(torch.abs(im)**2, axis=axes))
-
-
-def AdaptiveCoilCombine(data_tensor):
-    k = 6
-    chunks = data_tensor.chunk(k, dim=0)  # 在第 0 维度进行等分
-    out_chunks = []
-    for i, chunk in enumerate(chunks):
-        chunk = chunk.cuda()
-        n_slice, nx, ny, nc = chunk.shape
-        # Step-01
-        data_flatten1 = chunk.reshape(-1, nc, 1)
-        data_flatten2 = chunk.reshape(-1, 1, nc)
-        mat_corr = torch.bmm(data_flatten1, data_flatten2)
-
-        # Step-02
-        U, S, _ = torch.svd(mat_corr)
-        vfilter = U[:, :, 0].unsqueeze(1)
-        data_out = torch.bmm(vfilter.conj(), data_flatten1)
-        data_out = data_out.reshape(n_slice, nx, ny)
-        out_chunks.append(data_out)
-    return torch.cat(out_chunks,0).cpu()
 
 
 def center_crop(image, crop_size):
@@ -89,7 +67,7 @@ def center_crop(image, crop_size):
     """
 
     # 获取输入图像的尺寸
-    n_slices, n_coils, image_height, image_width = image.shape
+    _, _, image_height, image_width = image.shape
 
     # 获取裁剪尺寸
     crop_height, crop_width = crop_size
@@ -103,12 +81,22 @@ def center_crop(image, crop_size):
 
     return cropped_image
 
+def normlize_complex(data):
+    data_modulus = torch.abs(data)
+    data_angle = torch.angle(data)
+    ori_shape = data_modulus.shape
+    modulus_flat = data_modulus.reshape(ori_shape[0], -1)
+    modulus_min, modulus_max = torch.min(modulus_flat, -1, keepdim=True)[0], torch.max(modulus_flat, -1, keepdim=True)[0]
+    modulus_norm = (modulus_flat - modulus_min)/(modulus_max - modulus_min)
+    modulus_norm = modulus_norm.reshape(ori_shape)
+    return torch.polar(modulus_norm, data_angle)
 
-def kspace2img(ksapce):
-    n_slice, nc, nx, ny = ksapce.shape
-    ksapce = torch.view_as_real(ksapce)
-    img = fft2c_new(ksapce).reshape(n_slice, nc, nx, ny, 2)
-    return torch.view_as_complex(img)    
+
+def gen_sampling_mask(n_frequencies, save_path):
+    random_sample_mask = RandomMask(n_frequencies=n_frequencies, center_fraction=0.08, acceleration=4, seed=1000)
+    if not os.path.exists(save_path):
+        with h5py.File(save_path,  'w') as f:
+            f.create_dataset('random_sample_mask', data=random_sample_mask)
 
 
 def gen_lst(tgt_path, task, processed_pids):
@@ -127,78 +115,101 @@ def gen_lst(tgt_path, task, processed_pids):
 
 
 def process_single(input):
-    data_path, tgt_path, pid = input
+    data_path, espirit_path, task_tgt_path, pid = input
     kspace, reconstruction_rss = load_h5(data_path)
     n_slices, n_coils, n_rows, n_frequencies = kspace.shape
-    target_size = (320, 320)
-    kspace = torch.from_numpy(kspace)
+    kspace = torch.from_numpy(kspace).cuda()
 
     ####################################### 计算满采图像 ######################################
     # 对每个kspace切片转到图像域
-    img = kspace2img(kspace)
-    crop_img = center_crop(img, target_size)
-    assert(tuple(crop_img.shape[-2:])==target_size)
-    crop_img = crop_img.permute(0, 2, 3, 1)
-    # acc算法通道合并后的图像
-    acc_img = AdaptiveCoilCombine(crop_img).numpy()
-    # sos算法通道合并后的图像
-    sos_img = sos(crop_img).numpy()
-
+    img = torch.view_as_complex(ifft2c_new(torch.view_as_real(kspace)))
+    img = center_crop(img, target_size)
+    img = normlize_complex(img)
+    kspace = torch.view_as_complex(fft2c_new(torch.view_as_real(img)))
+    kspace_arr = kspace.cpu().numpy()
     ####################################### 计算欠采图像 ######################################
-    # 欠采k空间数据
-    random_sample_mask_4 = RandomMask(n_frequencies=n_frequencies, center_fraction=0.08, acceleration=4, seed=1000)
-    random_sample_mask_8 = RandomMask(n_frequencies=n_frequencies, center_fraction=0.04, acceleration=8, seed=1000)
-    eqs_sample_mask_4 = EquiSpacedMask(n_frequencies, center_fraction=0.08, acceleration=4, offset=0)
-    eqs_sample_mask_8 = EquiSpacedMask(n_frequencies, center_fraction=0.04, acceleration=8, offset=0)
+    with h5py.File(mask_path, 'r') as f:
+        random_sample_mask = f['random_sample_mask'][:]
+        random_sample_mask = torch.from_numpy(random_sample_mask).cuda()
+        random_sample_mask = random_sample_mask[None][None][None] * torch.ones(kspace.shape).cuda()
+        random_sample_mask_arr = random_sample_mask.cpu().numpy()[0,0]
 
-    random_sample_kspace_4 = torch.from_numpy(random_sample_mask_4)[None,None,None] * kspace
-    random_sample_kspace_8 = torch.from_numpy(random_sample_mask_8)[None,None,None] * kspace
-    eqs_sample_kspace_4 = torch.from_numpy(eqs_sample_mask_4)[None,None,None] * kspace
-    eqs_sample_kspace_8 = torch.from_numpy(eqs_sample_mask_8)[None,None,None] * kspace
+    with h5py.File(espirit_path, 'r') as file:
+        sensemap = file['smaps_acl30'][:].squeeze()
+        sensemap = center_crop(sensemap, target_size)
 
     # 欠采图像数据
-    random_sample_img_4 = center_crop(kspace2img(random_sample_kspace_4), target_size).numpy()
-    random_sample_img_8 = center_crop(kspace2img(random_sample_kspace_8), target_size).numpy()
-    eqs_sample_img_4 = center_crop(kspace2img(eqs_sample_kspace_4), target_size).numpy()
-    eqs_sample_img_8 = center_crop(kspace2img(eqs_sample_kspace_8), target_size).numpy()
+    sensemap_th = torch.from_numpy(sensemap).cuda()
+    random_sample_img = mriAdjointOpNoShift(kspace, sensemap_th, random_sample_mask).cpu().numpy()
+
+    # 满采图像数据
+    full_sampling_img = mriAdjointOpNoShift(kspace, sensemap_th, torch.ones_like(kspace).cuda()).cpu().numpy()
+
+    # ##################
+    os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
+    import matplotlib.pylab as plt
+    plt.figure()
+    plt.subplot(1,5,1)
+    plt.imshow(np.abs(full_sampling_img[10]), cmap="gray")
+    plt.subplot(1,5,2)
+    plt.imshow(np.abs(kspace_arr[10,10]), cmap="gray")
+    plt.subplot(1,5,3)
+    plt.imshow(np.abs(random_sample_img[10]), cmap="gray")
+    plt.subplot(1,5,4)
+    plt.imshow(random_sample_mask_arr, cmap="gray")
+    plt.subplot(1,5,5)
+    plt.imshow(np.abs(sensemap[10,10]), cmap="gray")
+    plt.show()
+    # ###################
 
     for i in range(n_slices):
         # 将数据存储到 .h5 文件
-        f =  h5py.File(os.path.join(tgt_path, f'{pid}_{i}.h5'),  'w')
-        f.create_dataset('acc_img', data=acc_img[i])
-        f.create_dataset('sos_img', data=sos_img[i])
-        f.create_dataset('random_sample_img_4', data=random_sample_img_4[i])
-        f.create_dataset('random_sample_img_8', data=random_sample_img_8[i])
-        f.create_dataset('eqs_sample_img_4', data=eqs_sample_img_4[i])
-        f.create_dataset('eqs_sample_img_8', data=eqs_sample_img_8[i])
-        f.close()
-
+        with h5py.File(os.path.join(task_tgt_path, f'{pid}_{i}.h5'),  'w') as f:
+            f.create_dataset('full_sampling_img', data=full_sampling_img[i])     # 320*320 -complex64
+            f.create_dataset('full_sampling_kspace', data=kspace_arr[i])         # 15*320*320 -complex64
+            f.create_dataset('random_sample_img', data=random_sample_img[i])     # 320*320 -complex64
+            f.create_dataset('random_sample_mask', data=random_sample_mask_arr)  # 320*320 -int
+            f.create_dataset('sensemap', data=sensemap[i])                       # 15*320*320 -complex64
+   
 
 if __name__ == '__main__':
     time_start = time.time()
+    target_size = (320, 320)
     args = parse_args()
-    src_path = args.src_path
+    src_path = pathlib.Path(args.src_path)
+    tgt_path = pathlib.Path(args.tgt_path)
+
+    # 生成下采样Mask
+    os.makedirs(tgt_path / "sampling_masks", exist_ok=True)
+    mask_path = tgt_path / "sampling_masks" / "mask.h5"
+    if not os.path.exists(mask_path):
+        gen_sampling_mask(target_size[-1], mask_path)
+
+    # 生成训练数据和验证数据
     for task in ["train", "val", "test"]:
         print("\nBegin gen %s data!"%(task))
         src_data_path = pathlib.Path(args.src_path) / "multicoil_{}".format(task)
         if not src_data_path.exists():
             print(str(src_data_path) + " does not exist!")
             continue
-        tgt_path = pathlib.Path(args.tgt_path) / task
-        os.makedirs(tgt_path, exist_ok=True)
+
+        src_espirit_path = pathlib.Path(args.src_path) / "multicoil_{}_espirit".format(task)
+        if not src_espirit_path.exists():
+            print(str(src_espirit_path) + " does not exist!")
+            continue
+
+        task_tgt_path = tgt_path / task
+        os.makedirs(task_tgt_path, exist_ok=True)
         inputs = []
         for f_name in tqdm(os.listdir(src_data_path)):     
             pid = f_name.replace(".h5", "").replace("file","")
             data_path = src_data_path / f_name
-            inputs.append([data_path, tgt_path, pid])
-            process_single([data_path,tgt_path,pid])
-        processed_pids = [pid.replace(".h5", "").replace("file","") for pid in os.listdir(src_data_path)]
-        pool = Pool(4)
-        pool.map(process_single, inputs)
-        pool.close()
-        pool.join()
+            espirit_path = src_espirit_path / f_name
+            process_single([data_path, espirit_path, task_tgt_path, pid])
+        processed_pids = set([pid.replace(".h5", "").replace("file","") for pid in os.listdir(src_data_path)])
         # 生成Dataset所需的数据列表
-        gen_lst(tgt_path, task, processed_pids)
+        gen_lst(task_tgt_path, task, processed_pids)
     time_cost = time.time() - time_start
     print("time_cost: ", time_cost)
+
 

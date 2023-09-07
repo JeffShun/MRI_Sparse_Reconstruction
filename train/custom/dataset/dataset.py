@@ -4,6 +4,7 @@ import random
 import numpy as np
 from torch.utils import data
 from custom.utils.common_tools import *
+from custom.utils.mri_tools import *
 import copy
 import h5py
 
@@ -31,58 +32,20 @@ class MyDataset(data.Dataset):
         return len(self.data_lst)
 
     def _load_source_data(self, file_name):
-        # data = np.load(file_name, allow_pickle=True)
-
         with h5py.File(file_name, 'r') as f:
-            # acc_img = f['acc_img'][:]
-            sos_img = f['sos_img'][:]
-            random_sample_img_4 = f['random_sample_img_4'][:]
-            # random_sample_img_8 = f['random_sample_img_8'][:]
-            # eqs_sample_img_4 = f['eqs_sample_img_4'][:]
-            # eqs_sample_img_8 = f['eqs_sample_img_8'][:]
+            full_sampling_img = f['full_sampling_img'][:]                # 320*320 -complex64
+            full_sampling_kspace = f['full_sampling_kspace'][:]          # 15*320*320 -complex64
+            random_sample_img = f['random_sample_img'][:]                # 320*320 -complex64
+            random_sample_mask = f['random_sample_mask'][:]              # 320*320 -int
+            sensemap = f['sensemap'][:]                                  # 15*320*320 -complex64
 
-        img = copy.deepcopy(random_sample_img_4)
-        label = copy.deepcopy(sos_img[np.newaxis,:,:])
-        # transform前，数据必须转化为[C,H,D]的形状
-        if self._transforms:
-            img, label = self._transforms(img, label)
+        full_sampling_img = torch.from_numpy(full_sampling_img)
+        full_sampling_kspace = torch.from_numpy(full_sampling_kspace)
+        random_sample_img = torch.from_numpy(random_sample_img)
+        random_sample_mask = torch.from_numpy(random_sample_mask)
+        sensemap = torch.from_numpy(sensemap)
 
-        ##################### Debug ##########################
-        # # 多通道图像合并
-        # random_sample_img_4 = np.transpose(random_sample_img_4, axes=(1, 2, 0))
-        # random_sample_img_4 = sos(random_sample_img_4)
-
-        # random_sample_img_8 = np.transpose(random_sample_img_8, axes=(1, 2, 0))
-        # random_sample_img_8 = sos(random_sample_img_8)
-
-        # eqs_sample_img_4 = np.transpose(eqs_sample_img_4, axes=(1, 2, 0))
-        # eqs_sample_img_4 = sos(eqs_sample_img_4)
-
-        # eqs_sample_img_8 = np.transpose(eqs_sample_img_8, axes=(1, 2, 0))
-        # eqs_sample_img_8 = sos(eqs_sample_img_8)
-        
-        # plt.figure(1)
-        # plt.subplot(241)
-        # plt.title("acc_img")
-        # plt.imshow(np.abs(acc_img),cmap="gray")    
-        # plt.subplot(242)
-        # plt.title("sos_img")
-        # plt.imshow(sos_img,cmap="gray")  
-        # plt.subplot(243)
-        # plt.title("random_sample_img_4")
-        # plt.imshow(random_sample_img_4,cmap="gray")   
-        # plt.subplot(244)
-        # plt.title("random_sample_img_8")
-        # plt.imshow(random_sample_img_8,cmap="gray")  
-        # plt.subplot(245)
-        # plt.title("eqs_sample_img_4")
-        # plt.imshow(eqs_sample_img_4,cmap="gray")  
-        # plt.subplot(246)
-        # plt.title("eqs_sample_img_8")
-        # plt.imshow(eqs_sample_img_8,cmap="gray")  
-        # plt.show()
-        ##################### Debug ##########################
-        return img.float(), label.float()
+        return random_sample_img, sensemap, random_sample_mask, full_sampling_img, full_sampling_kspace 
 
 
 

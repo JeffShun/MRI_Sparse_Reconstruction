@@ -2,6 +2,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from custom.utils.mri_tools import *
 
 class SSIMLoss(nn.Module):
     """
@@ -23,6 +24,8 @@ class SSIMLoss(nn.Module):
         self.cov_norm = NP / (NP - 1)
 
     def forward(self, X: torch.Tensor, Y: torch.Tensor):
+        X = torch.abs(X).unsqueeze(1)
+        Y = torch.abs(Y).unsqueeze(1)
         assert isinstance(self.w, torch.Tensor)
         B, C, W, D = Y.shape
         max_values, _ = torch.max(Y.view(B, C, -1), -1)

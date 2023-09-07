@@ -1,7 +1,8 @@
 import sys, os
 work_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(work_dir)
-from custom.model.backbones.ResUnet import *
+from custom.model.backbones.modl import *
+from custom.model.backbones.DUnet import *
 from custom.model.model_head import *
 from custom.model.model_network import *
 from custom.model.model_loss import *
@@ -14,8 +15,24 @@ class network_cfg:
 
     # network
     network = Model_Network(
-        backbone = ResUnet(in_ch=30,channels=32, blocks=2),
-        head = Model_Head(in_channels=32, num_class=1),
+        # backbone = MoDL(n_layers=5, k_iters=10),
+        backbone = Dunet(
+            num_iter=8, 
+            model=DIDN,
+            model_config = {
+                'in_chans': 2,
+                'out_chans': 2,
+                'num_chans': 32,
+                'n_res_blocks': 5,
+                'global_residual': False,
+                },
+            datalayer = DataGDLayer,
+            datalayer_config = {
+                'learnable': True,
+                'lambda_init': 0.05
+                },
+            ),
+        head = Model_Head(),
         apply_sync_batchnorm=False,
     )
 
@@ -28,23 +45,15 @@ class network_cfg:
     # dataset
     train_dataset = MyDataset(
         dst_list_file = work_dir + "/train_data/processed_data/train.txt",
-        transforms = TransformCompose([
-            to_tensor(),
-            normlize(),
-            complex_to_multichannel()
-            ])
+        transforms = None
         )
     valid_dataset = MyDataset(
         dst_list_file = work_dir + "/train_data/processed_data/val.txt",
-        transforms = TransformCompose([
-            to_tensor(),           
-            normlize(),
-            complex_to_multichannel()
-            ])
+        transforms = None
         )
     
     # dataloader
-    batchsize = 8
+    batchsize = 2
     shuffle = True
     num_workers = 4
     drop_last = False
@@ -62,11 +71,11 @@ class network_cfg:
     last_epoch = -1
 
     # debug
-    valid_interval = 2
-    log_dir = work_dir + "/Logs_v1"
-    checkpoints_dir = work_dir + '/checkpoints/v1'
-    checkpoint_save_interval = 2
-    total_epochs = 200
+    valid_interval = 1
+    log_dir = work_dir + "/Logs/Dunet"
+    checkpoints_dir = work_dir + '/checkpoints/Dunet'
+    checkpoint_save_interval = 1
+    total_epochs = 100
     load_from = work_dir + '/checkpoints/pretrain/28.pth'
 
     # others
