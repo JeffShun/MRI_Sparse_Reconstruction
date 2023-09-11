@@ -3,6 +3,8 @@ work_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(work_dir)
 from custom.model.backbones.modl import *
 from custom.model.backbones.DUnet import *
+from custom.model.backbones.MW_DUnet import *
+from custom.model.backbones.ResUnet import *
 from custom.model.model_head import *
 from custom.model.model_network import *
 from custom.model.model_loss import *
@@ -15,6 +17,7 @@ class network_cfg:
 
     # network
     network = Model_Network(
+        # backbone = ResUnet(in_ch=2, channels=64, outchannel=2, blocks=2),
         # backbone = MoDL(n_layers=5, k_iters=10),
         backbone = Dunet(
             num_iter=8, 
@@ -22,7 +25,7 @@ class network_cfg:
             model_config = {
                 'in_chans': 2,
                 'out_chans': 2,
-                'num_chans': 32,
+                'num_chans': 64,
                 'n_res_blocks': 5,
                 'global_residual': False,
                 },
@@ -59,7 +62,7 @@ class network_cfg:
     drop_last = False
 
     # optimizer
-    lr = 1e-3
+    lr = 1e-4
     weight_decay = 5e-4
 
     # scheduler
@@ -72,8 +75,8 @@ class network_cfg:
 
     # debug
     valid_interval = 1
-    log_dir = work_dir + "/Logs/Dunet"
-    checkpoints_dir = work_dir + '/checkpoints/Dunet'
+    log_dir = work_dir + "/Logs/MWDunet"
+    checkpoints_dir = work_dir + '/checkpoints/MWDunet'
     checkpoint_save_interval = 1
     total_epochs = 100
     load_from = work_dir + '/checkpoints/pretrain/28.pth'

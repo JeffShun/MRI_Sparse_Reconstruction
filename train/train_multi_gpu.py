@@ -19,12 +19,6 @@ import torch.distributed as dist
 os.makedirs(network_cfg.checkpoints_dir,exist_ok=True)
 logger_dir = network_cfg.log_dir
 os.makedirs(logger_dir, exist_ok=True)
-for file in os.listdir(logger_dir):
-    if file.startswith("events.out.tfevents"):
-        try:
-            os.remove(logger_dir+"/"+file)
-        except:
-            pass
 logger = Logger(logger_dir+"/train.log", level='debug').logger
 writer = SummaryWriter(logger_dir)
 create_tar_archive("./", logger_dir+"/project.tar")
@@ -145,9 +139,9 @@ def train():
             loss_info = ""              
             for loss_item, loss_val in valid_loss.items():
                 valid_loss[loss_item] /= (ii+1)
-                loss_info += "{}={:.4f}\t ".format(loss_item, loss_val)
+                loss_info += "{}={:.4f}\t ".format(loss_item, valid_loss[loss_item])
                 if rank == 0:
-                    writer.add_scalar('ValidLoss/{}'.format(loss_item),loss_val, (epoch+1)*len(train_dataloader))
+                    writer.add_scalar('ValidLoss/{}'.format(loss_item),valid_loss[loss_item], (epoch+1)*len(train_dataloader))
             if rank == 0:
                 logger.info('Validating Step:\t {}'.format(loss_info))
         

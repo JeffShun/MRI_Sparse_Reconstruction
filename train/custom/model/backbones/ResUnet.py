@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from custom.utils.mri_tools import *
 
 def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
     """3x3 convolution with padding."""
@@ -80,26 +81,29 @@ class DoubleConv(nn.Module):
 
 class ResUnet(nn.Module):
 
-    def __init__(self, in_ch, channels=32, blocks=2):
+    def __init__(self, in_ch, channels=32, outchannel=2, blocks=2):
         super(ResUnet, self).__init__()
 
-        self.layer1 = make_res_layer(in_ch, channels * 2, blocks, stride=1)
-        self.layer2 = make_res_layer(channels * 2, channels * 4, blocks, stride=2)
-        self.layer3 = make_res_layer(channels * 4, channels * 8, blocks, stride=2)
-        self.layer4 = make_res_layer(channels * 8, channels * 16, blocks, stride=2)
-        self.layer5 = make_res_layer(channels * 16, channels * 32, blocks, stride=2)
+        self.layer1 = make_res_layer(in_ch, channels, blocks, stride=1)
+        self.layer2 = make_res_layer(channels, channels * 2, blocks, stride=2)
+        self.layer3 = make_res_layer(channels * 2, channels * 4, blocks, stride=2)
+        self.layer4 = make_res_layer(channels * 4, channels * 8, blocks, stride=2)
+        self.layer5 = make_res_layer(channels * 8, channels * 16, blocks, stride=2)
 
         self.up5 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
-        self.mconv4 = DoubleConv(channels * 48, channels * 16)
+        self.mconv4 = DoubleConv(channels * 24, channels * 8)
         self.up4 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
-        self.mconv3 = DoubleConv(channels * 24, channels * 8)
+        self.mconv3 = DoubleConv(channels * 12, channels * 4)
         self.up3 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
-        self.mconv2 = DoubleConv(channels * 12, channels * 4)
+        self.mconv2 = DoubleConv(channels * 6, channels * 2)
         self.up2 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
-        self.mconv1 = DoubleConv(channels * 6, channels)
+        self.mconv1 = DoubleConv(channels * 3, channels)
+        self.end = conv1x1(channels, outchannel)
         
-    def forward(self, input):
-        c1 = self.layer1(input)
+    def forward(self, inputs):
+        random_sample_img, sensemap, random_sample_mask, full_sampling_kspace = inputs
+        x = c2r(random_sample_img, axis=1)
+        c1 = self.layer1(x)
         c2 = self.layer2(c1)
         c3 = self.layer3(c2)
         c4 = self.layer4(c3)
@@ -109,8 +113,8 @@ class ResUnet(nn.Module):
         merge3 = self.mconv3(torch.cat([self.up4(merge4), c3], dim=1))
         merge2 = self.mconv2(torch.cat([self.up3(merge3), c2], dim=1))
         merge1 = self.mconv1(torch.cat([self.up2(merge2), c1], dim=1))
-
-        return merge1
+        out = self.end(merge1)
+        return r2c(out, axis=1)
 
 
 

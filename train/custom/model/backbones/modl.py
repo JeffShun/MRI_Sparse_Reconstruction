@@ -57,6 +57,7 @@ def myCG(AtA, rhs):
     """
     performs CG algorithm
     :AtA: a class object that contains csm, mask and lambda and operates forward model
+    refer: https://lusongno1.blog.csdn.net/article/details/78550803?spm=1001.2101.3001.6650.4
     """
     rhs = r2c(rhs, axis=1) # nrow, ncol
     x = torch.zeros_like(rhs)
