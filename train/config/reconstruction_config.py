@@ -1,10 +1,6 @@
 import sys, os
 work_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(work_dir)
-from custom.model.backbones.modl import *
-from custom.model.backbones.DUnet import *
-from custom.model.backbones.MW_DUnet import *
-from custom.model.backbones.ResUnet import *
 from custom.model.backbones.MC_DUnet import *
 from custom.model.model_head import *
 from custom.model.model_network import *
@@ -18,35 +14,24 @@ class network_cfg:
 
     # network
     network = Model_Network(
-        # backbone = ResUnet(in_ch=2, channels=64, outchannel=2, blocks=2),
-        # backbone = MoDL(n_layers=5, k_iters=10),
         backbone = MC_DUnet(
-            in_ch=30,
-            channels=64,
-            outchannel=30,
-            blocks=2,
-            global_residual=True,
+            model=ResUnet,
+            model_config = {
+                'in_ch': 30,
+                'out_chans': 30,
+                'num_chans': 64,
+                'n_res_blocks': 2,
+                'global_residual': True,
+                },
+
+            datalayer = DataGDLayer,
+            datalayer_config = {
+                'learnable': True,
+                'lambda_init': 1.0
+                },
             num_iter=5,
-            shared_params=True,
-            lambda_init = 0.05
+            shared_params=True 
             ),
-        # backbone = UnetMoDL(in_chans=30, out_chans=30, num_chans=32, global_residual=True, n_res_blocks=5, k_iters=10),
-        # backbone = Dunet(
-        #     num_iter=8, 
-        #     model=DIDN,
-        #     model_config = {
-        #         'in_chans': 30,
-        #         'out_chans': 30,
-        #         'num_chans': 32,
-        #         'n_res_blocks': 5,
-        #         'global_residual': False,
-        #         },
-        #     datalayer = DataGDLayer,
-        #     datalayer_config = {
-        #         'learnable': True,
-        #         'lambda_init': 0.05
-        #         },
-        #     ),
         head = Model_Head(in_channels=30,num_class=1),
         apply_sync_batchnorm=False,
     )
@@ -54,7 +39,7 @@ class network_cfg:
     # loss function
     loss_func = LossCompose([
         SSIMLoss(win_size = 7, k1 = 0.01, k2 = 0.03),
-        # MSELoss()
+        MSELoss()
         ])
 
     # dataset

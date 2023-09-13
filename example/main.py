@@ -24,7 +24,7 @@ def parse_args():
         '--model_file',
         type=str,
         # default='../train/checkpoints/trt_model/model.engine'
-        default='../train/checkpoints/MC_DUnet/27.pth'
+        default='../train/checkpoints/MC_DUnet/16.pth'
     )
     parser.add_argument(
         '--config_file',

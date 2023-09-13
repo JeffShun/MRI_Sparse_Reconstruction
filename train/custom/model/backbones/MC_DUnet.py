@@ -1,7 +1,6 @@
 
 import torch
 import torch.nn as nn
-import numpy as np
 from custom.utils.mri_tools import *
 
 def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
@@ -83,25 +82,25 @@ class DoubleConv(nn.Module):
 
 class ResUnet(nn.Module):
 
-    def __init__(self, in_ch, channels=32, outchannel=2, blocks=2, global_residual=True):
+    def __init__(self, in_ch, out_chans, num_chans=32, n_res_blocks=2, global_residual=True):
         super(ResUnet, self).__init__()
         self.global_residual = global_residual
 
-        self.layer1 = make_res_layer(in_ch, channels, blocks, stride=1)
-        self.layer2 = make_res_layer(channels, channels * 2, blocks, stride=2)
-        self.layer3 = make_res_layer(channels * 2, channels * 4, blocks, stride=2)
-        self.layer4 = make_res_layer(channels * 4, channels * 8, blocks, stride=2)
-        self.layer5 = make_res_layer(channels * 8, channels * 16, blocks, stride=2)
+        self.layer1 = make_res_layer(in_ch, num_chans, n_res_blocks, stride=1)
+        self.layer2 = make_res_layer(num_chans, num_chans * 2, n_res_blocks, stride=2)
+        self.layer3 = make_res_layer(num_chans * 2, num_chans * 4, n_res_blocks, stride=2)
+        self.layer4 = make_res_layer(num_chans * 4, num_chans * 8, n_res_blocks, stride=2)
+        self.layer5 = make_res_layer(num_chans * 8, num_chans * 16, n_res_blocks, stride=2)
 
         self.up5 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
-        self.mconv4 = DoubleConv(channels * 24, channels * 8)
+        self.mconv4 = DoubleConv(num_chans * 24, num_chans * 8)
         self.up4 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
-        self.mconv3 = DoubleConv(channels * 12, channels * 4)
+        self.mconv3 = DoubleConv(num_chans * 12, num_chans * 4)
         self.up3 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
-        self.mconv2 = DoubleConv(channels * 6, channels * 2)
+        self.mconv2 = DoubleConv(num_chans * 6, num_chans * 2)
         self.up2 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
-        self.mconv1 = DoubleConv(channels * 3, channels)
-        self.end = conv1x1(channels, outchannel)
+        self.mconv1 = DoubleConv(num_chans * 3, num_chans)
+        self.end = conv1x1(num_chans, out_chans)
         
     def forward(self, x):
         residual = x
@@ -123,67 +122,73 @@ class ResUnet(nn.Module):
 
 
 class DataGDLayer(nn.Module):
-    """
-        DataLayer computing the gradient on the L2 dataterm.
-    """
+    flag = "GD"
     def __init__(self, lambda_init, learnable=True):
-        """
-        Args:
-            lambda_init (float): Init value of data term weight lambda.
-        """
         super(DataGDLayer, self).__init__()
-        self.lambda_init = lambda_init
-        self.data_weight = torch.nn.Parameter(torch.Tensor(1))
-        self.data_weight.data = torch.tensor(
-            lambda_init,
-            dtype=self.data_weight.dtype,
-        )
-        self.data_weight.requires_grad = learnable
+        self.lam = nn.Parameter(torch.tensor(lambda_init), requires_grad=learnable)
 
     def forward(self, x, y, mask):
         A_x_y = fft2c_new(x) * mask - y
         gradD_x = ifft2c_new(A_x_y * mask)
-        return x - self.data_weight * gradD_x
+        return x - self.lam * gradD_x
+    
+
+class DataPMLayer(nn.Module):
+    flag = "PM"
+    def __init__(self, lambda_init, learnable=True):
+        super(DataPMLayer, self).__init__()
+        self.lam = nn.Parameter(torch.tensor(lambda_init), requires_grad=learnable)
+
+    def forward(self, z_k, x0, mask):
+        rhs = x0 + self.lam * z_k 
+        rec = self.myCG(rhs, mask, self.lam)
+        return rec
+
+    def myAtA(self, im, mask, lam):
+        """
+        AtA: a func. that contains csm, mask and lambda and operates forward model
+        :im: complex image (B, ncoil, nrow, ncol)
+        """
+        k_full = torch.view_as_complex(fft2c_new(torch.view_as_real(im))) # convert into k-space 
+        k_u = k_full * mask.unsqueeze(1) # undersampling
+        im_u = torch.view_as_complex(ifft2c_new(torch.view_as_real(k_u))) # convert into image domain
+        return im_u + lam * im        
+
+    def myCG(self, rhs, mask, lam):
+        """
+        performs CG algorithm
+        refer: https://lusongno1.blog.csdn.net/article/details/78550803?spm=1001.2101.3001.6650.4
+        """
+        rhs = r2c(rhs, axis=1) # (B, ncoil, nrow, ncol)
+        x = torch.zeros_like(rhs)
+        i, r, p = 0, rhs, rhs
+        rTr = torch.sum(r.conj()*r,dim=(-1,-2,-3),keepdim=True).real
+        while i < 10 and torch.all(rTr > 1e-10):
+            Ap = self.myAtA(p, mask, lam)
+            alpha = rTr / torch.sum(p.conj()*Ap,dim=(-1,-2,-3),keepdim=True).real
+            alpha = alpha
+            x = x + alpha * p
+            r = r - alpha * Ap
+            rTrNew = torch.sum(r.conj()*r,dim=(-1,-2,-3),keepdim=True).real
+            beta = rTrNew / rTr
+            beta = beta
+            p = r + beta * p
+            i += 1
+            rTr = rTrNew
+        return c2r(x, axis=1)
 
     def __repr__(self):
-        return f'DataLayer(lambda_init={self.data_weight.item():.4g})'
-    
-class DenoisingWrapper(nn.Module):
-    def __init__(self, model):
-        super().__init__()
-        self.model = model
-
-    def forward(self, input):
-        # re-shape data from [nBatch, nCoil, nFE, nPE, 2]
-        # to [nBatch, nCoil*2, nFE, nPE]
-        nCoil = input.shape[1]
-        output = torch.cat((input[...,0], input[...,1]), 1)
-
-        # apply denoising
-        output = self.model(output)
-
-        # re-shape data from [nBatch, nCoil*2, nFE, nPE]
-        # to [nBatch, nCoil, nFE, nPE, 2]
-        output = torch.stack((output[:,:nCoil], output[:,nCoil:]),-1)
-
-        return output
+        return 'DataPMLayer'
 
 class MC_DUnet(torch.nn.Module):
-    """
-    Sensitivity network with data term based on forward and adjoint containing
-    the sensitivity maps
-
-    """
     def __init__(
         self,
-        in_ch=30,
-        channels=64,
-        outchannel=30,
-        blocks=2,
-        global_residual=True,
-        num_iter=8,
-        shared_params=True,
-        lambda_init = 0.05
+        model,
+        model_config,
+        datalayer,
+        datalayer_config,
+        num_iter=10,
+        shared_params=True,  
     ):
         super().__init__()
 
@@ -195,35 +200,69 @@ class MC_DUnet(torch.nn.Module):
             self.num_iter = num_iter
 
         self.num_iter_total = num_iter
-
-        self.is_trainable = [True] * num_iter
-
+        self.dc = datalayer.flag
+        
         # setup the modules
         self.gradR = torch.nn.ModuleList([
-            DenoisingWrapper(ResUnet(in_ch, channels, outchannel, blocks, global_residual))
+            model(**model_config)
             for i in range(self.num_iter)
         ])
         self.gradD = torch.nn.ModuleList([
-            DataGDLayer(lambda_init, learnable=True) for i in range(self.num_iter)
+            datalayer(**datalayer_config)
+            for i in range(self.num_iter)
         ])
 
     def forward(self, inputs):
+        if self.dc == "GD":
+            return self.forwardGD(inputs)
+        else:
+            return self.forwardPM(inputs)
+
+
+    def forwardGD(self, inputs):
         random_sample_img, random_sample_mask, full_sampling_kspace = inputs
         x = torch.view_as_real(random_sample_img)                # [B, 15, 320, 320, 2]
         y = torch.view_as_real(full_sampling_kspace)             # [B, 15, 320, 320, 2]
         mask = random_sample_mask.unsqueeze(1).unsqueeze(-1)     # [B, 1, 320, 320, 1]
         y*=mask
-
-        if self.shared_params:
-            num_iter = self.num_iter_total
-        else:
-            num_iter = min(np.where(self.is_trainable)[0][-1] + 1, self.num_iter)
         
-        for i in range(num_iter):
-            x_thalf = x - self.gradR[i%self.num_iter](x)
-            x = self.gradD[i%self.num_iter](x_thalf, y, mask)
+        for k in range(self.num_iter_total):
+            x_thalf = self.reshapeWrapper(self.gradR[k%self.num_iter], x)
+            x = self.gradD[k%self.num_iter](x_thalf, y, mask)
 
         out = c2r(torch.view_as_complex(x), axis=1)
         return out
 
 
+    def forwardPM(self, inputs):
+        random_sample_img, random_sample_mask, full_sampling_kspace = inputs
+        
+        x0 = c2r(random_sample_img, axis=1)
+        mask = random_sample_mask
+        """
+        :x0: zero-filled reconstruction (B, ncoil*2, nrow, ncol) - float32
+        :mask: sampling mask (B, nrow, ncol) - int8
+        """
+        x_k = x0.clone()
+        for k in range(self.num_iter_total):
+            #dw 
+            z_k = self.gradR[k%self.num_iter](x_k) # (B, 2*ncoil, nrow, ncol)
+            #dc
+            x_k = self.gradD[k%self.num_iter](z_k, x0, mask)  # (B, 2*ncoil, nrow, ncol)
+
+        return x_k
+    
+    def reshapeWrapper(self, model, input):
+        # re-shape data from [nBatch, nCoil, nFE, nPE, 2]
+        # to [nBatch, nCoil*2, nFE, nPE]
+        nCoil = input.shape[1]
+        output = torch.cat((input[...,0], input[...,1]), 1)
+
+        # apply denoising
+        output = model(output)
+
+        # re-shape data from [nBatch, nCoil*2, nFE, nPE]
+        # to [nBatch, nCoil, nFE, nPE, 2]
+        output = torch.stack((output[:,:nCoil], output[:,nCoil:]),-1)
+
+        return output        
