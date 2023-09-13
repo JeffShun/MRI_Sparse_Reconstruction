@@ -11,19 +11,20 @@ from PIL import Image
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from infer.predictor import ReconstructionModel, ReconstructionPredictor
+from train.custom.utils.mri_tools import *
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Test MRI Reconstruction')
 
     parser.add_argument('--device', default="cuda:0", type=str)
     parser.add_argument('--input_path', default='../example/data/input/test_mini', type=str)
-    parser.add_argument('--output_path', default='../example/data/output/Dunet-41', type=str)
+    parser.add_argument('--output_path', default='../example/data/output/MC_DUnet', type=str)
 
     parser.add_argument(
         '--model_file',
         type=str,
         # default='../train/checkpoints/trt_model/model.engine'
-        default='../train/checkpoints/Dunet/41.pth'
+        default='../train/checkpoints/MC_DUnet/27.pth'
     )
     parser.add_argument(
         '--config_file',
@@ -63,16 +64,15 @@ def main(input_path, output_path, device, args):
     for f_name in tqdm(os.listdir(input_path)):
         f_path = os.path.join(input_path, f_name)
         with h5py.File(f_path, 'r') as f:
-            full_sampling_img = f['full_sampling_img'][:]                # 320*320 -complex64
+            full_sampling_img = f['full_sampling_img'][:]                # 15*320*320 -complex64
             full_sampling_kspace = f['full_sampling_kspace'][:]          # 15*320*320 -complex64
             random_sample_img = f['random_sample_img'][:]                # 320*320 -complex64
             random_sample_mask = f['random_sample_mask'][:]              # 320*320 -int
-            sensemap = f['sensemap'][:]                                  # 15*320*320 -complex64
 
-        input_img = np.abs(random_sample_img)
-        label = np.abs(full_sampling_img)
-        pid = f_name.replace(".npz", "")
-        inputs = [random_sample_img, sensemap, random_sample_mask, full_sampling_kspace]
+        input_img = sos(random_sample_img,coil_axis=0,keep_dim=False)
+        label = sos(full_sampling_img,coil_axis=0,keep_dim=False)
+        pid = f_name.replace(".h5", "")
+        inputs = [random_sample_img, random_sample_mask, full_sampling_kspace]
         pred_array = inference(predictor_reconstruction, inputs)
         save_img([input_img, label, pred_array], os.path.join(output_path, f'{pid}.png'))
 

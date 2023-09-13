@@ -15,7 +15,8 @@ import pycuda.autoinit
 import sys, os
 work_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(work_dir)
-from train.custom.utils.common_tools import normlize, complex_to_multichannel
+from train.custom.utils.common_tools import *
+from train.custom.utils.mri_tools import *
 
 class HostDeviceMem(object):
     def __init__(self, host_mem, device_mem):
@@ -134,7 +135,7 @@ class ReconstructionPredictor:
         with torch.no_grad():
             reconstruction = self.net(inputs_th)
             reconstruction = reconstruction.squeeze().cpu().detach().numpy()
-        return np.abs(reconstruction)
+        return reconstruction
 
 
     

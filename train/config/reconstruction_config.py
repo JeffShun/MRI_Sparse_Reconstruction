@@ -5,6 +5,7 @@ from custom.model.backbones.modl import *
 from custom.model.backbones.DUnet import *
 from custom.model.backbones.MW_DUnet import *
 from custom.model.backbones.ResUnet import *
+from custom.model.backbones.MC_DUnet import *
 from custom.model.model_head import *
 from custom.model.model_network import *
 from custom.model.model_loss import *
@@ -19,29 +20,40 @@ class network_cfg:
     network = Model_Network(
         # backbone = ResUnet(in_ch=2, channels=64, outchannel=2, blocks=2),
         # backbone = MoDL(n_layers=5, k_iters=10),
-        backbone = Dunet(
-            num_iter=8, 
-            model=DIDN,
-            model_config = {
-                'in_chans': 2,
-                'out_chans': 2,
-                'num_chans': 64,
-                'n_res_blocks': 5,
-                'global_residual': False,
-                },
-            datalayer = DataGDLayer,
-            datalayer_config = {
-                'learnable': True,
-                'lambda_init': 0.05
-                },
+        backbone = MC_DUnet(
+            in_ch=30,
+            channels=64,
+            outchannel=30,
+            blocks=2,
+            global_residual=True,
+            num_iter=5,
+            shared_params=True,
+            lambda_init = 0.05
             ),
-        head = Model_Head(),
+        # backbone = UnetMoDL(in_chans=30, out_chans=30, num_chans=32, global_residual=True, n_res_blocks=5, k_iters=10),
+        # backbone = Dunet(
+        #     num_iter=8, 
+        #     model=DIDN,
+        #     model_config = {
+        #         'in_chans': 30,
+        #         'out_chans': 30,
+        #         'num_chans': 32,
+        #         'n_res_blocks': 5,
+        #         'global_residual': False,
+        #         },
+        #     datalayer = DataGDLayer,
+        #     datalayer_config = {
+        #         'learnable': True,
+        #         'lambda_init': 0.05
+        #         },
+        #     ),
+        head = Model_Head(in_channels=30,num_class=1),
         apply_sync_batchnorm=False,
     )
 
     # loss function
     loss_func = LossCompose([
-        SSIMLoss(win_size = 7, k1 = 0.01, k2 = 0.03)
+        SSIMLoss(win_size = 7, k1 = 0.01, k2 = 0.03),
         # MSELoss()
         ])
 
@@ -62,7 +74,7 @@ class network_cfg:
     drop_last = False
 
     # optimizer
-    lr = 1e-4
+    lr = 1e-3
     weight_decay = 5e-4
 
     # scheduler
@@ -75,8 +87,8 @@ class network_cfg:
 
     # debug
     valid_interval = 1
-    log_dir = work_dir + "/Logs/MWDunet"
-    checkpoints_dir = work_dir + '/checkpoints/MWDunet'
+    log_dir = work_dir + "/Logs/MC_DUnet"
+    checkpoints_dir = work_dir + '/checkpoints/MC_DUnet'
     checkpoint_save_interval = 1
     total_epochs = 100
     load_from = work_dir + '/checkpoints/pretrain/28.pth'

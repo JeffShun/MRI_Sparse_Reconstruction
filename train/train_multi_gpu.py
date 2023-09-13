@@ -86,14 +86,13 @@ def train():
         train_sampler.set_epoch(epoch)
         #Training Step!
         net.train()
-        for ii, (random_sample_img, sensemap, random_sample_mask, full_sampling_img, full_sampling_kspace) in enumerate(train_dataloader):
+        for ii, (random_sample_img, random_sample_mask, full_sampling_img, full_sampling_kspace) in enumerate(train_dataloader):
             random_sample_img = V(random_sample_img).cuda()
-            sensemap = V(sensemap).cuda()
             random_sample_mask = V(random_sample_mask).cuda()
             full_sampling_img = V(full_sampling_img).cuda()
             full_sampling_kspace = V(full_sampling_kspace).cuda()
             optimizer.zero_grad()
-            t_out = net([random_sample_img, sensemap, random_sample_mask, full_sampling_kspace])
+            t_out = net([random_sample_img, random_sample_mask, full_sampling_kspace])
             t_loss = loss_func(t_out, full_sampling_img)
             loss_all = V(torch.zeros(1)).to(device)
             loss_info = ""
@@ -121,14 +120,13 @@ def train():
         if (epoch+1) % network_cfg.valid_interval == 0:
             valid_loss = dict()
             net.eval()
-            for ii, (random_sample_img, sensemap, random_sample_mask, full_sampling_img, full_sampling_kspace) in enumerate(valid_dataloader):
+            for ii, (random_sample_img, random_sample_mask, full_sampling_img, full_sampling_kspace) in enumerate(valid_dataloader):
                 random_sample_img = V(random_sample_img).cuda()
-                sensemap = V(sensemap).cuda()
                 random_sample_mask = V(random_sample_mask).cuda()
                 full_sampling_img = V(full_sampling_img).cuda()
                 full_sampling_kspace = V(full_sampling_kspace).cuda()
                 with torch.no_grad():
-                    v_out = net([random_sample_img, sensemap, random_sample_mask, full_sampling_kspace])
+                    v_out = net([random_sample_img, random_sample_mask, full_sampling_kspace])
                     v_loss = loss_func(v_out, full_sampling_img)
                     
                 for loss_item, loss_val in v_loss.items():

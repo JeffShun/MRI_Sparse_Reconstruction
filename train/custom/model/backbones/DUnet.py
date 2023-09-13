@@ -2,7 +2,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from custom.utils.mri_tools import forwardSoftSenseOpNoShift, adjointSoftSenseOpNoShift
+from custom.utils.mri_tools import *
 
 class _Residual_Block(nn.Module):
     def __init__(self, num_chans=64):
@@ -172,31 +172,31 @@ class DataGDLayer(nn.Module):
         )
         self.data_weight.requires_grad = learnable
 
-    def forward(self, x, y, smaps, mask):
-        A_x_y = forwardSoftSenseOpNoShift(x, smaps, mask) - y
-        gradD_x = adjointSoftSenseOpNoShift(A_x_y, smaps, mask)
+    def forward(self, x, y, mask):
+        A_x_y = fft2c_new(x) * mask - y
+        gradD_x = ifft2c_new(A_x_y * mask)
         return x - self.data_weight * gradD_x
 
     def __repr__(self):
         return f'DataLayer(lambda_init={self.data_weight.item():.4g})'
     
-class ConnectWrapper(nn.Module):
+class DenoisingWrapper(nn.Module):
     def __init__(self, model):
         super().__init__()
         self.model = model
 
     def forward(self, input):
-        # re-shape data from [nBatch, nSmaps, nFE, nPE, 2]
-        # to [nBatch*nSmaps, 2, nFE, nPE]
-        shp = input.shape
-        output = input.view(shp[0] * shp[1], *shp[2:]).permute(0, 3, 1, 2)
+        # re-shape data from [nBatch, nCoil, nFE, nPE, 2]
+        # to [nBatch, nCoil*2, nFE, nPE]
+        nCoil = input.shape[1]
+        output = torch.cat((input[...,0], input[...,1]), 1)
 
         # apply denoising
         output = self.model(output)
 
-        # re-shape data from [nBatch*nSmaps, 2, nFE, nPE]
-        # to [nBatch, nSmaps, nFE, nPE, 2]
-        output = output.permute(0, 2, 3, 1).view(*shp)
+        # re-shape data from [nBatch, nCoil*2, nFE, nPE]
+        # to [nBatch, nCoil, nFE, nPE, 2]
+        output = torch.stack((output[:,:nCoil], output[:,nCoil:]),-1)
 
         return output
 
@@ -232,7 +232,7 @@ class Dunet(torch.nn.Module):
 
         # setup the modules
         self.gradR = torch.nn.ModuleList([
-            ConnectWrapper(model(**model_config))
+            DenoisingWrapper(model(**model_config))
             for i in range(self.num_iter)
         ])
         self.gradD = torch.nn.ModuleList([
@@ -246,11 +246,10 @@ class Dunet(torch.nn.Module):
         self.reset_cache = reset_cache
 
     def forward(self, inputs):
-        random_sample_img, sensemap, random_sample_mask, full_sampling_kspace = inputs
-        x = torch.view_as_real(random_sample_img.unsqueeze(1))                # [B, 1, 320, 320, 2]
-        y = torch.view_as_real(full_sampling_kspace.unsqueeze(2))             # [B, 15, 1, 320, 320, 2]
-        smaps = torch.view_as_real(sensemap.unsqueeze(2))                     # [B, 15, 1, 320, 320, 2]
-        mask = random_sample_mask.unsqueeze(1).unsqueeze(2).unsqueeze(-1)     # [B, 1, 1, 320, 320, 1]
+        random_sample_img, random_sample_mask, full_sampling_kspace = inputs
+        x = torch.view_as_real(random_sample_img)                # [B, 15, 320, 320, 2]
+        y = torch.view_as_real(full_sampling_kspace)             # [B, 15, 320, 320, 2]
+        mask = random_sample_mask.unsqueeze(1).unsqueeze(-1)     # [B, 1, 320, 320, 1]
         y*=mask
 
         x_all = [x]
@@ -262,18 +261,17 @@ class Dunet(torch.nn.Module):
 
         for i in range(num_iter):
             x_thalf = x - self.gradR[i%self.num_iter](x)
-            x = self.gradD[i%self.num_iter](x_thalf, y, smaps, mask)
+            x = self.gradD[i%self.num_iter](x_thalf, y, mask)
             x_all.append(x)
             x_half_all.append(x_thalf)
-        out = torch.view_as_complex(x_all[-1].squeeze(1).squeeze(1))
+        out = torch.view_as_complex(x_all[-1])
         return out
 
     def forward_save_space(self, inputs):
-        random_sample_img, sensemap, random_sample_mask, full_sampling_kspace = inputs
-        x = torch.view_as_real(random_sample_img.unsqueeze(1))                # [B, 1, 320, 320, 2]
-        y = torch.view_as_real(full_sampling_kspace.unsqueeze(2))             # [B, 15, 1, 320, 320, 2]
-        smaps = torch.view_as_real(sensemap.unsqueeze(2))                     # [B, 15, 1, 320, 320, 2]
-        mask = random_sample_mask.unsqueeze(1).unsqueeze(2).unsqueeze(-1)     # [B, 1, 1, 320, 320, 1]
+        random_sample_img, random_sample_mask, full_sampling_kspace = inputs
+        x = torch.view_as_real(random_sample_img)                # [B, 15, 320, 320, 2]
+        y = torch.view_as_real(full_sampling_kspace)             # [B, 15, 320, 320, 2]
+        mask = random_sample_mask.unsqueeze(1).unsqueeze(-1)     # [B, 1, 320, 320, 1]
         y*=mask
 
         if self.shared_params:
@@ -283,14 +281,14 @@ class Dunet(torch.nn.Module):
         
         for i in range(num_iter):
             x_thalf = x - self.gradR[i%self.num_iter](x)
-            x = self.gradD[i%self.num_iter](x_thalf, y, smaps, mask)
+            x = self.gradD[i%self.num_iter](x_thalf, y, mask)
 
             # would run out of memory at test time
             # if this is False for some cases
             if self.reset_cache:
                 torch.cuda.empty_cache()
                 torch.backends.cuda.cufft_plan_cache.clear()
-        out = torch.view_as_complex(x.squeeze(1).squeeze(1))
+        out = c2r(torch.view_as_complex(x), axis=1)
         return out
 
 

@@ -55,11 +55,6 @@ def EquiSpacedMask(n_frequencies=368, center_fraction=0.08, acceleration=4, offs
     mask = (1 - center_mask) * acceleration_mask + center_mask  
     return mask.astype(np.float32)
 
-def sos(im, axes=-1):
-    '''Root sum of squares combination along given axes.
-    '''
-    return torch.sqrt(torch.sum(torch.abs(im)**2, axis=axes))
-
 
 def center_crop(image, crop_size):
     """
@@ -115,7 +110,7 @@ def gen_lst(tgt_path, task, processed_pids):
 
 
 def process_single(input):
-    data_path, espirit_path, task_tgt_path, pid = input
+    data_path, task_tgt_path, pid = input
     kspace, reconstruction_rss = load_h5(data_path)
     n_slices, n_coils, n_rows, n_frequencies = kspace.shape
     kspace = torch.from_numpy(kspace).cuda()
@@ -133,43 +128,37 @@ def process_single(input):
         random_sample_mask = torch.from_numpy(random_sample_mask).cuda()
         random_sample_mask = random_sample_mask[None][None][None] * torch.ones(kspace.shape).cuda()
         random_sample_mask_arr = random_sample_mask.cpu().numpy()[0,0]
-
-    with h5py.File(espirit_path, 'r') as file:
-        sensemap = file['smaps_acl30'][:].squeeze()
-        sensemap = center_crop(sensemap, target_size)
-
     # 欠采图像数据
-    sensemap_th = torch.from_numpy(sensemap).cuda()
-    random_sample_img = mriAdjointOpNoShift(kspace, sensemap_th, random_sample_mask).cpu().numpy()
+    random_sample_img = torch.view_as_complex(
+        ifft2c_new(torch.view_as_real(random_sample_mask * kspace))
+        ).cpu().numpy()
 
     # 满采图像数据
-    full_sampling_img = mriAdjointOpNoShift(kspace, sensemap_th, torch.ones_like(kspace).cuda()).cpu().numpy()
+    full_sampling_img = img.cpu().numpy()
 
-    # ##################
-    os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
-    import matplotlib.pylab as plt
-    plt.figure()
-    plt.subplot(1,5,1)
-    plt.imshow(np.abs(full_sampling_img[10]), cmap="gray")
-    plt.subplot(1,5,2)
-    plt.imshow(np.abs(kspace_arr[10,10]), cmap="gray")
-    plt.subplot(1,5,3)
-    plt.imshow(np.abs(random_sample_img[10]), cmap="gray")
-    plt.subplot(1,5,4)
-    plt.imshow(random_sample_mask_arr, cmap="gray")
-    plt.subplot(1,5,5)
-    plt.imshow(np.abs(sensemap[10,10]), cmap="gray")
-    plt.show()
-    # ###################
+    # # ##################
+    # os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
+    # import matplotlib.pylab as plt
+    # plt.figure()
+    # plt.subplot(1,5,1)
+    # plt.imshow(sos(full_sampling_img[10],coil_axis=0,keep_dim=False), cmap="gray")
+    # plt.subplot(1,5,2)
+    # plt.imshow(np.abs(kspace_arr[10,10]), cmap="gray")
+    # plt.subplot(1,5,3)
+    # plt.imshow(sos(random_sample_img[10],coil_axis=0,keep_dim=False), cmap="gray")
+    # plt.subplot(1,5,4)
+    # plt.imshow(random_sample_mask_arr, cmap="gray")
+    # plt.show()
+    # # ###################
 
     for i in range(n_slices):
         # 将数据存储到 .h5 文件
+
         with h5py.File(os.path.join(task_tgt_path, f'{pid}_{i}.h5'),  'w') as f:
-            f.create_dataset('full_sampling_img', data=full_sampling_img[i])     # 320*320 -complex64
+            f.create_dataset('full_sampling_img', data=full_sampling_img[i])     # 15*320*320 -complex64
             f.create_dataset('full_sampling_kspace', data=kspace_arr[i])         # 15*320*320 -complex64
-            f.create_dataset('random_sample_img', data=random_sample_img[i])     # 320*320 -complex64
+            f.create_dataset('random_sample_img', data=random_sample_img[i])     # 15*320*320 -complex64
             f.create_dataset('random_sample_mask', data=random_sample_mask_arr)  # 320*320 -int
-            f.create_dataset('sensemap', data=sensemap[i])                       # 15*320*320 -complex64
    
 
 if __name__ == '__main__':
@@ -193,19 +182,13 @@ if __name__ == '__main__':
             print(str(src_data_path) + " does not exist!")
             continue
 
-        src_espirit_path = pathlib.Path(args.src_path) / "multicoil_{}_espirit".format(task)
-        if not src_espirit_path.exists():
-            print(str(src_espirit_path) + " does not exist!")
-            continue
-
         task_tgt_path = tgt_path / task
         os.makedirs(task_tgt_path, exist_ok=True)
         inputs = []
         for f_name in tqdm(os.listdir(src_data_path)):     
             pid = f_name.replace(".h5", "").replace("file","")
             data_path = src_data_path / f_name
-            espirit_path = src_espirit_path / f_name
-            process_single([data_path, espirit_path, task_tgt_path, pid])
+            process_single([data_path, task_tgt_path, pid])
         processed_pids = set([pid.replace(".h5", "").replace("file","") for pid in os.listdir(src_data_path)])
         # 生成Dataset所需的数据列表
         gen_lst(task_tgt_path, task, processed_pids)
