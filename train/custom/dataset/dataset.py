@@ -1,11 +1,9 @@
 """data loader."""
 
-import random
-import numpy as np
+
 from torch.utils import data
 from custom.utils.common_tools import *
 from custom.utils.mri_tools import *
-import copy
 import h5py
 
 class MyDataset(data.Dataset):

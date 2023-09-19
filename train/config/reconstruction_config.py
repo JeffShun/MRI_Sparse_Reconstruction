@@ -1,48 +1,60 @@
 import sys, os
 work_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(work_dir)
-from custom.model.backbones.modl import *
-from custom.model.backbones.DUnet import *
-from custom.model.backbones.MW_DUnet import *
-from custom.model.backbones.ResUnet import *
-from custom.model.model_head import *
-from custom.model.model_network import *
+from custom.dataset.dataset import MyDataset
+from custom.model.DenosingComponents.ResUNet import ResUnet
+from custom.model.DenosingComponents.DUNet import DIDN
+from custom.model.DenosingComponents.SimpleCNN import SimpleCNN
+from custom.model.DCLayers import DataPMLayer, DataGDLayer
+from custom.model.backbones.My_DCNet import My_DCNet
+from custom.model.backbones.DCFree import DCFree
+from custom.model.model_head import Model_Head
+from custom.model.model_network import Model_Network
 from custom.model.model_loss import *
 from custom.utils.common_tools import *
-from custom.dataset.dataset import *
+
 
 class network_cfg:
     # img
     patch_size = (320, 320)
-
     # network
     network = Model_Network(
-        # backbone = ResUnet(in_ch=2, channels=64, outchannel=2, blocks=2),
-        # backbone = MoDL(n_layers=5, k_iters=10),
-        backbone = Dunet(
-            num_iter=8, 
-            model=DIDN,
+        backbone = DCFree(
+            model = ResUnet,
             model_config = {
                 'in_chans': 2,
                 'out_chans': 2,
                 'num_chans': 64,
-                'n_res_blocks': 5,
-                'global_residual': False,
-                },
-            datalayer = DataGDLayer,
-            datalayer_config = {
-                'learnable': True,
-                'lambda_init': 0.05
+                'n_res_blocks': 2,
+                'global_residual': True,
                 },
             ),
+        # backbone = My_DCNet(
+        #     model=DIDN,
+        #     model_config = {
+        #         'in_chans': 2,
+        #         'out_chans': 2,
+        #         'num_chans': 64,
+        #         'n_res_blocks': 5,
+        #         'global_residual': True,
+        #         },
+        #     datalayer = DataPMLayer,
+        #     datalayer_config = {
+        #         'learnable': True,
+        #         'lambda_init': 0.05
+        #         },
+        #     num_iter=8,
+        #     shared_params=True 
+        #     ),
         head = Model_Head(),
         apply_sync_batchnorm=False,
     )
 
     # loss function
     loss_func = LossCompose([
-        SSIMLoss(win_size = 7, k1 = 0.01, k2 = 0.03)
-        # MSELoss()
+        # LossSamplingWrapper(SSIMLoss(win_size = 7, k1 = 0.01, k2 = 0.03), sampling_p=0.5),
+        # LossSamplingWrapper(MSELoss(), sampling_p=0.5)
+        SSIMLoss(win_size = 7, k1 = 0.01, k2 = 0.03),
         ])
 
     # dataset
@@ -62,7 +74,7 @@ class network_cfg:
     drop_last = False
 
     # optimizer
-    lr = 1e-4
+    lr = 1e-3
     weight_decay = 5e-4
 
     # scheduler
@@ -75,11 +87,11 @@ class network_cfg:
 
     # debug
     valid_interval = 1
-    log_dir = work_dir + "/Logs/MWDunet"
-    checkpoints_dir = work_dir + '/checkpoints/MWDunet'
+    log_dir = work_dir + "/Logs/DCFree"
+    checkpoints_dir = work_dir + '/checkpoints/DCFree'
     checkpoint_save_interval = 1
     total_epochs = 100
-    load_from = work_dir + '/checkpoints/pretrain/28.pth'
+    load_from = work_dir + '/checkpoints/pretrain/100.pth'
 
     # others
     device = 'cuda'

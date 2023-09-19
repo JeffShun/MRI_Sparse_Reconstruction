@@ -35,74 +35,11 @@ class TransformCompose(object):
         format_string += '\n)'
         return format_string
 
-
 class to_tensor(object):
     def __call__(self, img, label):
         img_o = torch.from_numpy(img)
         label_o = torch.from_numpy(label)
         return img_o, label_o
-
-class normlize(object):
-    @ staticmethod
-    def _normlize_real(data):
-        ori_shape = data.shape
-        data_o = data.reshape(-1)
-        data_o = (data_o - data_o.min())/(data_o.max() - data_o.min())
-        data_o = data_o.reshape(ori_shape)
-        return data_o
-
-    @ staticmethod
-    def _normlize_complex(data):
-        data_modulus = torch.abs(data)
-        data_angle = torch.angle(data)
-        modulus_norm = normlize._normlize_real(data_modulus)
-        data_o = torch.polar(modulus_norm, data_angle)
-        return data_o
-    
-    @ staticmethod
-    def _normlize_real2(data):
-        ori_shape = data.shape
-        data_o = data.reshape(ori_shape[0], -1)
-        data_min = data_o.min(dim=-1,keepdim=True)[0]
-        data_max = data_o.max(dim=-1,keepdim=True)[0]
-        data_o = (data_o - data_min)/(data_max - data_min)
-        data_o = data_o.reshape(ori_shape)
-        return data_o
-
-    @ staticmethod
-    def _normlize_complex2(data):
-        real = data.real
-        imag = data.imag
-        real = normlize._normlize_real2(real)
-        imag = normlize._normlize_real2(imag)
-        data_o = real + 1j * imag
-        return data_o
-
-    def __call__(self, img, label):
-        if torch.is_complex(img):
-            img_o = self._normlize_complex(img)
-        else:
-            img_o = self._normlize_real(img)
-
-        if torch.is_complex(label):
-            label_o = self._normlize_complex(label)
-        else:
-            label_o = self._normlize_real(label)
-        return img_o, label_o
-
-class complex_to_multichannel(object):
-    @ staticmethod
-    def _complex_to_multichannel(data):
-        data_o = torch.concat((data.real, data.imag), 0)
-        return data_o
-    def __call__(self, img, label):
-        img_o, label_o = img, label
-        if torch.is_complex(img_o):
-            img_o = self._complex_to_multichannel(img)
-        if torch.is_complex(label_o):
-            label_o = self._complex_to_multichannel(label_o)
-        return img_o, label_o
-
 
 class random_flip(object):
     def __init__(self, axis=1, prob=0.5):
@@ -215,31 +152,10 @@ class WarmupMultiStepLR(torch.optim.lr_scheduler._LRScheduler):
                 warmup_factor = self.warmup_factor * (1 - alpha) + alpha
         return [base_lr* warmup_factor*self.gamma ** bisect_right(self.milestones, self.last_epoch)  for base_lr in self.base_lrs]
  
-class LossCompose(object):
-
-    """Composes several loss together.
-    Args:
-        Losses: list of Losses to compose.
-    """
-    def __init__(self, Losses):
-        self.Losses = Losses
-
-    def __call__(self, img, label):
-        loss_dict = dict()
-        for loss_f in self.Losses:
-            loss = loss_f(img, label)
-            loss_dict[loss_f._get_name()] = loss
-        return loss_dict
-
-    def __repr__(self):
-        format_string = self.__class__.__name__ + '('
-        for loss in self.Losses:
-            format_string += '\n'
-            format_string += '    {0}'.format(loss)
-        format_string += '\n)'
-        return format_string
-
-
+class DataLoaderX(DataLoader):
+    def __iter__(self):
+        return BackgroundGenerator(super().__iter__())
+    
 def create_tar_archive(source_folder, output_filename):
     with tarfile.open(output_filename, "w") as tar:
         for root, dirs, files in os.walk(source_folder):
@@ -254,9 +170,5 @@ def create_tar_archive(source_folder, output_filename):
                     file_path = os.path.join(root, file)
                     tar.add(file_path, arcname=os.path.relpath(file_path, source_folder))
 
-class DataLoaderX(DataLoader):
-
-    def __iter__(self):
-        return BackgroundGenerator(super().__iter__())
     
 

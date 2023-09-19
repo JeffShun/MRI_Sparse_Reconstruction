@@ -13,9 +13,6 @@ from torch.utils.tensorboard import SummaryWriter
 # os.environ['CUDA_VISIBLE_DEVICES'] = network_cfg.gpus
 logger_dir = network_cfg.log_dir
 os.makedirs(logger_dir, exist_ok=True)
-for file in os.listdir(logger_dir):
-    if file.startswith("events.out.tfevents"):
-        os.remove(logger_dir+"/"+file)
 logger = Logger(logger_dir+"/train.log", level='debug').logger
 writer = SummaryWriter(logger_dir)
 create_tar_archive("./", logger_dir+"/project.tar")
@@ -99,8 +96,8 @@ def train():
             loss_info = ""              
             for loss_item, loss_val in valid_loss.items():
                 valid_loss[loss_item] /= (ii+1)
-                loss_info += "{}={:.4f}\t ".format(loss_item,loss_val.item())
-                writer.add_scalar('ValidLoss/{}'.format(loss_item),loss_val.item(), (epoch+1)*len(train_dataloader))
+                loss_info += "{}={:.4f}\t ".format(loss_item,valid_loss[loss_item])
+                writer.add_scalar('ValidLoss/{}'.format(loss_item),valid_loss[loss_item], (epoch+1)*len(train_dataloader))
             logger.info('Validating Step:\t {}'.format(loss_info))
             
             

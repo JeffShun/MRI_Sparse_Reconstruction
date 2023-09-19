@@ -66,8 +66,6 @@ def ifft2c_new(data: torch.Tensor, norm: str = "ortho") -> torch.Tensor:
 
 
 # Helper functions
-
-
 def roll_one_dim(x: torch.Tensor, shift: int, dim: int) -> torch.Tensor:
     """
     Similar to roll but for only one dim.
@@ -245,3 +243,61 @@ def mriAdjointOpNoShift(kspace, smaps, mask, coil_axis=-3):
     assert kspace.ndim == mask.ndim or mask.ndim == 2
     mask_kspace = kspace * mask
     return torch.sum(torch.view_as_complex(ifft2c_new(torch.view_as_real(mask_kspace)))*torch.conj(smaps), axis=coil_axis)
+
+def GenRandomMask(n_frequencies=368, center_fraction=0.08, acceleration=4, seed=1000):
+    rng = np.random.RandomState(seed)
+    num_low_frequencies = round(n_frequencies * center_fraction)
+    prob = (n_frequencies / acceleration - num_low_frequencies) / (n_frequencies - num_low_frequencies) 
+    acceleration_mask = (rng.uniform(size=n_frequencies) < prob).astype(np.int32)
+    center_mask = np.zeros(n_frequencies, dtype=np.int32)
+    pad = (n_frequencies - num_low_frequencies + 1) // 2
+    center_mask[pad : pad + num_low_frequencies] = 1
+    mask = (1 - center_mask) * acceleration_mask + center_mask
+    return mask.astype(np.float32)
+
+
+def GenEquiSpacedMask(n_frequencies=368, center_fraction=0.08, acceleration=4, offset=0): 
+    num_low_frequencies = round(n_frequencies * center_fraction)
+    # determine acceleration rate by adjusting for the number of low frequencies
+    adjusted_acceleration = (acceleration * (num_low_frequencies - n_frequencies)) / (num_low_frequencies * acceleration - n_frequencies)
+    acceleration_mask = np.zeros(n_frequencies, dtype=np.int32)
+    accel_samples = np.arange(offset, n_frequencies - 1, adjusted_acceleration)
+    accel_samples = np.around(accel_samples).astype(np.int32)
+    acceleration_mask[accel_samples] = 1
+    center_mask = np.zeros(n_frequencies, dtype=np.int32)
+    pad = (n_frequencies - num_low_frequencies + 1) // 2
+    center_mask[pad : pad + num_low_frequencies] = 1
+    mask = (1 - center_mask) * acceleration_mask + center_mask  
+    return mask.astype(np.float32)
+
+
+def center_crop(image, crop_size):
+    """
+    对图像进行中心裁剪。
+    """
+
+    # 获取输入图像的尺寸
+    _, _, image_height, image_width = image.shape
+
+    # 获取裁剪尺寸
+    crop_height, crop_width = crop_size
+
+    # 计算裁剪起始位置
+    start_row = (image_height - crop_height) // 2
+    start_col = (image_width - crop_width) // 2
+
+    # 进行裁剪
+    cropped_image = image[:, :, start_row:start_row+crop_height, start_col:start_col+crop_width]
+
+    return cropped_image
+
+# 复数图像模值归一化
+def normlize_complex(data):
+    data_modulus = torch.abs(data)
+    data_angle = torch.angle(data)
+    ori_shape = data_modulus.shape
+    modulus_flat = data_modulus.reshape(ori_shape[0], -1)
+    modulus_min, modulus_max = torch.min(modulus_flat, -1, keepdim=True)[0], torch.max(modulus_flat, -1, keepdim=True)[0]
+    modulus_norm = (modulus_flat - modulus_min)/(modulus_max - modulus_min)
+    modulus_norm = modulus_norm.reshape(ori_shape)
+    return torch.polar(modulus_norm, data_angle)

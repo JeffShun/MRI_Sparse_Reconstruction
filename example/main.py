@@ -17,13 +17,13 @@ def parse_args():
 
     parser.add_argument('--device', default="cuda:0", type=str)
     parser.add_argument('--input_path', default='../example/data/input/test_mini', type=str)
-    parser.add_argument('--output_path', default='../example/data/output/Dunet-41', type=str)
+    parser.add_argument('--output_path', default='../example/data/output/DCFree', type=str)
 
     parser.add_argument(
         '--model_file',
         type=str,
         # default='../train/checkpoints/trt_model/model.engine'
-        default='../train/checkpoints/Dunet/41.pth'
+        default='../train/checkpoints/DCFree/4.pth'
     )
     parser.add_argument(
         '--config_file',
