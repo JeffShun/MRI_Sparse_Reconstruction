@@ -20,14 +20,15 @@ class network_cfg:
     # network
     network = Model_Network(
         backbone = DCFree(
-            model = ResUnet,
+            model = DIDN,
             model_config = {
                 'in_chans': 2,
                 'out_chans': 2,
                 'num_chans': 64,
-                'n_res_blocks': 2,
+                'n_res_blocks': 5,
                 'global_residual': True,
                 },
+            use_sensemap=False
             ),
         # backbone = My_DCNet(
         #     model=DIDN,
@@ -74,7 +75,7 @@ class network_cfg:
     drop_last = False
 
     # optimizer
-    lr = 1e-3
+    lr = 1e-4
     weight_decay = 5e-4
 
     # scheduler
@@ -87,8 +88,8 @@ class network_cfg:
 
     # debug
     valid_interval = 1
-    log_dir = work_dir + "/Logs/DCFree"
-    checkpoints_dir = work_dir + '/checkpoints/DCFree'
+    log_dir = work_dir + "/Logs/DCFree+NoSense"
+    checkpoints_dir = work_dir + '/checkpoints/DCFree+NoSense'
     checkpoint_save_interval = 1
     total_epochs = 100
     load_from = work_dir + '/checkpoints/pretrain/100.pth'

@@ -105,7 +105,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--data_path",
         type=pathlib.Path,
-        default=pathlib.Path('../example/data/output/DUNet_DCFree/meta_datas'),
+        default=pathlib.Path('../example/data/output/DCFree+Sense/meta_datas'),
         help="Path to the ground truth data",
     )
 
