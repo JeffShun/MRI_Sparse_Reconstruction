@@ -7,7 +7,8 @@ import traceback
 import h5py
 import numpy as np
 from tqdm import tqdm
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
+from skimage.metrics import structural_similarity
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from infer.predictor import ReconstructionModel, ReconstructionPredictor
@@ -16,14 +17,14 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Test MRI Reconstruction')
 
     parser.add_argument('--device', default="cuda:0", type=str)
-    parser.add_argument('--input_path', default='../example/data/input_test', type=str)
-    parser.add_argument('--output_path', default='../example/data/output_test', type=str)
+    parser.add_argument('--input_path', default='../example/data/input/test', type=str)
+    parser.add_argument('--output_path', default='../example/data/output/Paper-ResUnet', type=str)
 
     parser.add_argument(
         '--model_file',
         type=str,
         # default='../train/checkpoints/trt_model/model.engine'
-        default='../train/checkpoints/v1/26.pth'
+        default='../train/checkpoints/Paper-ResUnet/2.pth'
     )
     parser.add_argument(
         '--config_file',
@@ -40,11 +41,19 @@ def inference(predictor: ReconstructionPredictor, img: np.ndarray):
 
 def save_img(img, save_path):
     input_sos, label, pred_img = img
+    ssim = structural_similarity(label, pred_img, data_range=label.max())
     input_sos = (input_sos-input_sos.min())/(input_sos.max()-input_sos.min())*255
     label = (label-label.min())/(label.max()-label.min())*255
     pred_img = (pred_img-pred_img.min())/(pred_img.max()-pred_img.min())*255
-    save_img = np.concatenate((input_sos, label, pred_img),1)
+    diff_img = np.abs(pred_img - label)**2
+    save_img = np.concatenate((input_sos, label, pred_img, diff_img),1)
     save_img = Image.fromarray(save_img.astype(np.uint8))
+    draw = ImageDraw.Draw(save_img)
+    font = ImageFont.truetype("arial.ttf", size=25)
+    title = "SSIM: %.4f"%(ssim)
+    draw.text((800, 285), title, fill=(255), font=font,stroke_fill='red')
+    # save_path_part = save_path.split("\\")
+    # save_path = save_path_part[0] + "/" + "{:.4f}".format(ssim) + "_" + save_path_part[1]
     save_img.save(save_path)
 
 
@@ -61,25 +70,27 @@ def main(input_path, output_path, device, args):
 
     os.makedirs(output_path, exist_ok=True)
     for f_name in tqdm(os.listdir(input_path)):
+        # if f_name != "1000267_22.h5":
+        #     continue
         f_path = os.path.join(input_path, f_name)
         with h5py.File(f_path, 'r') as f:
-            acc_img = f['acc_img'][:]
-            sos_img = f['sos_img'][:]
-            random_sample_img_4 = f['random_sample_img_4'][:]
-            random_sample_img_8 = f['random_sample_img_8'][:]
-            eqs_sample_img_4 = f['eqs_sample_img_4'][:]
-            eqs_sample_img_8 = f['eqs_sample_img_8'][:]
+            full_sampling_img = f['full_sampling_img'][:]                # 320*320 -complex64
+            full_sampling_kspace = f['full_sampling_kspace'][:]          # 15*320*320 -complex64
+            random_sample_img = f['random_sample_img'][:]                # 320*320 -complex64
+            random_sample_mask = f['random_sample_mask'][:]              # 320*320 -int
+            sensemap = f['sensemap'][:]                                  # 15*320*320 -complex64
 
-        input_img = random_sample_img_4
-        input_img_sos = np.sqrt(np.sum(np.abs(input_img)**2, axis=0))
-        pid = f_name.replace(".npz", "")
-        pred_array = inference(predictor_reconstruction, input_img)
-        save_img([input_img_sos, sos_img, pred_array], os.path.join(output_path, f'{pid}.png'))
+        input_img = np.abs(random_sample_img)
+        label = np.abs(full_sampling_img)
+        pid = f_name.replace(".h5", "")
+        inputs = [random_sample_img, sensemap, random_sample_mask, full_sampling_kspace]
+        pred_array = inference(predictor_reconstruction, inputs)
+        save_img([input_img, label, pred_array], os.path.join(output_path, f'{pid}.png'))
 
         meta_data_dir = os.path.join(output_path, "meta_datas", pid)
         os.makedirs(meta_data_dir, exist_ok=True)
         np.save(meta_data_dir + "/pred.npy", pred_array)
-        np.save(meta_data_dir + "/label.npy", sos_img)
+        np.save(meta_data_dir + "/label.npy", label)
 
 if __name__ == '__main__':
     args = parse_args()

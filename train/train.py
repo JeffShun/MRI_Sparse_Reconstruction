@@ -13,10 +13,7 @@ from torch.utils.tensorboard import SummaryWriter
 # os.environ['CUDA_VISIBLE_DEVICES'] = network_cfg.gpus
 logger_dir = network_cfg.log_dir
 os.makedirs(logger_dir, exist_ok=True)
-for file in os.listdir(logger_dir):
-    if file.startswith("events.out.tfevents"):
-        os.remove(logger_dir+"/"+file)
-logger = Logger(logger_dir+"/train.log", level='debug').logger
+logger = Logger(logger_dir+"/trainlog.txt", level='debug').logger
 writer = SummaryWriter(logger_dir)
 create_tar_archive("./", logger_dir+"/project.tar")
 
@@ -51,12 +48,15 @@ def train():
     time_start=time.time()
     for epoch in range(network_cfg.total_epochs): 
         #Training Step!
-        for ii, (train_data, train_label) in enumerate(train_dataloader):
-            train_data = V(train_data.float()).cuda()
-            train_label = V(train_label.float()).cuda()
+        for ii, (random_sample_img, sensemap, random_sample_mask, full_sampling_img, full_sampling_kspace) in enumerate(train_dataloader):
+            random_sample_img = V(random_sample_img).cuda()
+            sensemap = V(sensemap).cuda()
+            random_sample_mask = V(random_sample_mask).cuda()
+            full_sampling_img = V(full_sampling_img).cuda()
+            full_sampling_kspace = V(full_sampling_kspace).cuda()
             optimizer.zero_grad()
-            t_out = net(train_data)
-            t_loss = loss_func(t_out, train_label)
+            t_out = net([random_sample_img, sensemap, random_sample_mask, full_sampling_kspace])
+            t_loss = loss_func(t_out, full_sampling_img)
             loss_all = V(torch.zeros(1)).cuda()
             loss_info = ""
             for loss_item, loss_val in t_loss.items():
@@ -78,12 +78,15 @@ def train():
         # Valid Step!
         if (epoch+1) % network_cfg.valid_interval == 0:
             valid_loss = dict()
-            for ii, (valid_data,valid_label) in enumerate(valid_dataloader):
-                valid_data = V(valid_data.float()).cuda()
-                valid_label = V(valid_label.float()).cuda()
+            for ii, (random_sample_img, sensemap, random_sample_mask, full_sampling_img, full_sampling_kspace) in enumerate(valid_dataloader):
+                random_sample_img = V(random_sample_img).cuda()
+                sensemap = V(sensemap).cuda()
+                random_sample_mask = V(random_sample_mask).cuda()
+                full_sampling_img = V(full_sampling_img).cuda()
+                full_sampling_kspace = V(full_sampling_kspace).cuda()
                 with torch.no_grad():
-                    v_out = net(valid_data)
-                    v_loss = loss_func(v_out, valid_label)
+                    v_out = net([random_sample_img, sensemap, random_sample_mask, full_sampling_kspace])
+                    v_loss = loss_func(v_out, full_sampling_img)
                 loss_all = V(torch.zeros(1)).cuda()
                 for loss_item, loss_val in v_loss.items():
                     if loss_item not in valid_loss:
@@ -93,8 +96,8 @@ def train():
             loss_info = ""              
             for loss_item, loss_val in valid_loss.items():
                 valid_loss[loss_item] /= (ii+1)
-                loss_info += "{}={:.4f}\t ".format(loss_item,loss_val.item())
-                writer.add_scalar('ValidLoss/{}'.format(loss_item),loss_val.item(), (epoch+1)*len(train_dataloader))
+                loss_info += "{}={:.4f}\t ".format(loss_item,valid_loss[loss_item])
+                writer.add_scalar('ValidLoss/{}'.format(loss_item),valid_loss[loss_item], (epoch+1)*len(train_dataloader))
             logger.info('Validating Step:\t {}'.format(loss_info))
             
             

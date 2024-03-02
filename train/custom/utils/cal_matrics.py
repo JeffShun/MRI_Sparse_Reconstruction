@@ -95,8 +95,7 @@ def evaluate(args):
     for sample in args.data_path.iterdir():
         target = np.load(sample / "label.npy")
         recons = np.load(sample / "pred.npy")
-        target_norm = (target - target.min())/(target.max() - target.min())
-        metrics.push(target_norm, recons)
+        metrics.push(target, recons)
 
     return metrics
 
@@ -106,7 +105,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--data_path",
         type=pathlib.Path,
-        default=pathlib.Path('../example/data/output_test/meta_datas'),
+        default=pathlib.Path('../example/data/output/ResUnet-PM-SM_LSW_AUG/meta_datas'),
         help="Path to the ground truth data",
     )
 
